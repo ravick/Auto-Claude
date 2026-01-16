@@ -19,7 +19,11 @@ import {
   Zap,
   Database,
   Users,
-  FileQuestion
+  FileQuestion,
+  Sparkles,
+  Eye,
+  CheckCircle2,
+  Loader2
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -40,7 +44,9 @@ import type {
   AzureDevOpsSyncStatus,
   AzureDevOpsTeam,
   AzureDevOpsBacklog,
-  AzureDevOpsSavedQuery
+  AzureDevOpsSavedQuery,
+  AzureDevOpsInvestigationStatus,
+  AzureDevOpsInvestigationResult
 } from '../../shared/types/integrations';
 
 export interface AzureDevOpsWorkItemsProps {
@@ -74,6 +80,13 @@ const workItemTypeColor: Record<string, string> = {
   'Task': 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
   'Test Case': 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
   'User Story': 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+};
+
+// Complexity colors for task estimation
+const complexityColors: Record<string, string> = {
+  'simple': 'bg-green-500/20 text-green-500',
+  'standard': 'bg-yellow-500/20 text-yellow-500',
+  'complex': 'bg-red-500/20 text-red-500'
 };
 
 function NotConnectedState({
@@ -164,10 +177,41 @@ function WorkItemListItem({
   );
 }
 
-function WorkItemDetail({ workItem }: { workItem: AzureDevOpsWorkItem }) {
+interface WorkItemDetailProps {
+  workItem: AzureDevOpsWorkItem;
+  onInvestigate: () => void;
+  investigationStatus: AzureDevOpsInvestigationStatus | null;
+  investigationResult: AzureDevOpsInvestigationResult | null;
+  linkedTaskId: string | null;
+  onViewTask: (taskId: string) => void;
+}
+
+function WorkItemDetail({
+  workItem,
+  onInvestigate,
+  investigationStatus,
+  investigationResult,
+  linkedTaskId,
+  onViewTask
+}: WorkItemDetailProps) {
   const { t } = useTranslation('azureDevOps');
   const Icon = workItemTypeIcon[workItem.workItemType] || CheckSquare;
   const colorClass = workItemTypeColor[workItem.workItemType] || 'bg-muted text-muted-foreground';
+
+  // Determine if we have a linked task (either pre-existing or just created)
+  const taskId = linkedTaskId || (investigationResult?.success ? investigationResult.taskId : undefined);
+  const hasLinkedTask = !!taskId;
+
+  // Investigation in progress
+  const isInvestigating = investigationStatus?.phase === 'fetching' ||
+    investigationStatus?.phase === 'analyzing' ||
+    investigationStatus?.phase === 'creating_task';
+
+  const handleViewTask = () => {
+    if (taskId) {
+      onViewTask(taskId);
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -232,6 +276,79 @@ function WorkItemDetail({ workItem }: { workItem: AzureDevOpsWorkItem }) {
             </div>
           </div>
 
+          {/* Create Task / View Task Button */}
+          <div className="flex items-center gap-2">
+            {hasLinkedTask ? (
+              <Button onClick={handleViewTask} className="flex-1" variant="secondary">
+                <Eye className="h-4 w-4 mr-2" />
+                {t('detail.viewTask', 'View Task')}
+              </Button>
+            ) : (
+              <Button
+                onClick={onInvestigate}
+                className="flex-1"
+                disabled={isInvestigating}
+              >
+                {isInvestigating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    {investigationStatus?.message || t('detail.analyzing', 'Analyzing...')}
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    {t('detail.createTask', 'Create Task')}
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+
+          {/* Task Linked Info */}
+          {hasLinkedTask && (
+            <Card className="bg-green-500/5 border-green-500/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2 text-green-500">
+                  <CheckCircle2 className="h-4 w-4" />
+                  {t('detail.taskLinked', 'Task Linked')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-2">
+                {investigationResult?.success && investigationResult.analysis ? (
+                  <>
+                    <p className="text-foreground">{investigationResult.analysis.summary}</p>
+                    <div className="flex items-center gap-2">
+                      <Badge className={complexityColors[investigationResult.analysis.estimatedComplexity]}>
+                        {investigationResult.analysis.estimatedComplexity}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        Task ID: {taskId}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      Task ID: {taskId}
+                    </span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Investigation Error */}
+          {investigationStatus?.phase === 'error' && investigationStatus.error && (
+            <Card className="bg-destructive/5 border-destructive/30">
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 text-destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <span className="text-sm">{investigationStatus.error}</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Tags */}
           {workItem.tags && workItem.tags.length > 0 && (
             <div>
@@ -247,14 +364,24 @@ function WorkItemDetail({ workItem }: { workItem: AzureDevOpsWorkItem }) {
           )}
 
           {/* Description */}
-          {workItem.description && (
-            <div>
-              <div className="text-sm text-muted-foreground mb-2">{t('detail.description', 'Description')}</div>
-              <div className="prose prose-sm dark:prose-invert max-w-none">
-                <p className="whitespace-pre-wrap">{workItem.description}</p>
-              </div>
-            </div>
-          )}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">{t('detail.description', 'Description')}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {workItem.description ? (
+                <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <pre className="whitespace-pre-wrap text-sm text-muted-foreground font-sans">
+                    {workItem.description}
+                  </pre>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground italic">
+                  {t('detail.noDescription', 'No description provided.')}
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </ScrollArea>
     </div>
@@ -287,6 +414,11 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
   const [selectedQueryId, setSelectedQueryId] = useState<string | null>(null);
   const [isLoadingDataSource, setIsLoadingDataSource] = useState(false);
 
+  // Investigation state
+  const [investigationStatus, setInvestigationStatus] = useState<AzureDevOpsInvestigationStatus | null>(null);
+  const [investigationResults, setInvestigationResults] = useState<Record<number, AzureDevOpsInvestigationResult>>({});
+  const [linkedTasks, setLinkedTasks] = useState<Record<number, string>>({});
+
   // Check connection on mount or when project changes
   useEffect(() => {
     const checkConnection = async () => {
@@ -305,6 +437,57 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
     };
 
     checkConnection();
+  }, [selectedProjectId]);
+
+  // Set up investigation event listeners
+  useEffect(() => {
+    if (!selectedProjectId) return;
+
+    const cleanupProgress = window.electronAPI.onAzureDevOpsInvestigationProgress(
+      (projectId, status) => {
+        if (projectId === selectedProjectId) {
+          setInvestigationStatus(status);
+        }
+      }
+    );
+
+    const cleanupComplete = window.electronAPI.onAzureDevOpsInvestigationComplete(
+      (projectId, result) => {
+        if (projectId === selectedProjectId && result.workItemId) {
+          setInvestigationStatus({ phase: 'complete', progress: 100, message: 'Complete' });
+          setInvestigationResults(prev => ({
+            ...prev,
+            [result.workItemId]: result
+          }));
+          // Link the task if created successfully
+          if (result.success && result.taskId) {
+            setLinkedTasks(prev => ({
+              ...prev,
+              [result.workItemId]: result.taskId!
+            }));
+          }
+        }
+      }
+    );
+
+    const cleanupError = window.electronAPI.onAzureDevOpsInvestigationError(
+      (projectId, error) => {
+        if (projectId === selectedProjectId) {
+          setInvestigationStatus({
+            phase: 'error',
+            progress: 0,
+            message: error,
+            error
+          });
+        }
+      }
+    );
+
+    return () => {
+      cleanupProgress();
+      cleanupComplete();
+      cleanupError();
+    };
   }, [selectedProjectId]);
 
   // Load teams when data source changes to 'backlog'
@@ -488,6 +671,29 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
     setSelectedWorkItemId(null);
     setError(null);
   }, []);
+
+  // Handle investigate work item (Create Task)
+  const handleInvestigate = useCallback((workItemId: number) => {
+    if (!selectedProjectId) return;
+
+    // Reset investigation status for this work item
+    setInvestigationStatus({
+      phase: 'fetching',
+      workItemId,
+      progress: 0,
+      message: 'Fetching work item details...'
+    });
+
+    // Start the investigation
+    window.electronAPI.investigateAzureDevOpsWorkItem(selectedProjectId, workItemId);
+  }, [selectedProjectId]);
+
+  // Handle view task navigation
+  const handleViewTask = useCallback((taskId: string) => {
+    if (onNavigateToTask) {
+      onNavigateToTask(taskId);
+    }
+  }, [onNavigateToTask]);
 
   // Filter work items by search and type
   const filteredWorkItems = useMemo(() => {
@@ -713,7 +919,18 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
         {/* Work Item Detail */}
         <div className="w-1/2 flex flex-col">
           {selectedWorkItem ? (
-            <WorkItemDetail workItem={selectedWorkItem} />
+            <WorkItemDetail
+              workItem={selectedWorkItem}
+              onInvestigate={() => handleInvestigate(selectedWorkItem.id)}
+              investigationStatus={
+                investigationStatus?.workItemId === selectedWorkItem.id
+                  ? investigationStatus
+                  : null
+              }
+              investigationResult={investigationResults[selectedWorkItem.id] || null}
+              linkedTaskId={linkedTasks[selectedWorkItem.id] || null}
+              onViewTask={handleViewTask}
+            />
           ) : (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
               <p>{t('detail.selectItem', 'Select a work item to view details')}</p>
