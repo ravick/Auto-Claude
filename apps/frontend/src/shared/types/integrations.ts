@@ -575,6 +575,28 @@ export interface AzureDevOpsPRReviewProgress {
   message: string;
 }
 
+export interface AzureDevOpsTeam {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export interface AzureDevOpsBacklog {
+  id: string;
+  name: string;
+  type: 'product' | 'portfolio';
+  color: string;
+}
+
+export interface AzureDevOpsSavedQuery {
+  id: string;
+  name: string;
+  path: string;
+  isFolder: boolean;
+  queryType?: 'flat' | 'oneHop' | 'tree';
+  children?: AzureDevOpsSavedQuery[];
+}
+
 // ============================================
 // Roadmap Integration Types (Canny, etc.)
 // ============================================

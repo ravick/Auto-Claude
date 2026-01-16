@@ -277,6 +277,83 @@ export interface ADOPRChangesResponse {
 }
 
 // ============================================
+// Team Types
+// ============================================
+
+export interface ADOTeamResponse {
+  id: string;
+  name: string;
+  description?: string;
+  url: string;
+  identityUrl?: string;
+  projectName?: string;
+  projectId?: string;
+}
+
+export interface ADOTeamListResponse {
+  count: number;
+  value: ADOTeamResponse[];
+}
+
+// ============================================
+// Backlog Types (from Work API)
+// ============================================
+
+export interface ADOBacklogResponse {
+  id: string;
+  name: string;
+  rank: number;
+  type: 'product' | 'portfolio';
+  isHidden: boolean;
+  color: string;
+  workItemCountLimit: number;
+}
+
+export interface ADOBacklogListResponse {
+  count: number;
+  value: ADOBacklogResponse[];
+}
+
+export interface ADOBacklogWorkItemsResponse {
+  workItems: Array<{
+    target: { id: number; url: string };
+    source?: { id: number; url: string };
+  }>;
+}
+
+// ============================================
+// Saved Query Types (from WIT API)
+// ============================================
+
+export interface ADOQueryItem {
+  id: string;
+  name: string;
+  path: string;
+  isFolder: boolean;
+  isPublic: boolean;
+  isInvalidSyntax?: boolean;
+  queryType?: 'flat' | 'oneHop' | 'tree';
+  createdBy?: ADOIdentityRef;
+  createdDate?: string;
+  lastModifiedBy?: ADOIdentityRef;
+  lastModifiedDate?: string;
+  hasChildren?: boolean;
+  children?: ADOQueryItem[];
+  url: string;
+  _links?: {
+    self: { href: string };
+    html: { href: string };
+    parent: { href: string };
+    wiql: { href: string };
+  };
+}
+
+export interface ADOQueryListResponse {
+  count: number;
+  value: ADOQueryItem[];
+}
+
+// ============================================
 // Config Types
 // ============================================
 

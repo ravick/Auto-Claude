@@ -16,7 +16,10 @@ import {
   Calendar,
   CircleDot,
   FlaskConical,
-  Zap
+  Zap,
+  Database,
+  Users,
+  FileQuestion
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -34,7 +37,10 @@ import { cn } from '../lib/utils';
 import { useProjectStore } from '../stores/project-store';
 import type {
   AzureDevOpsWorkItem,
-  AzureDevOpsSyncStatus
+  AzureDevOpsSyncStatus,
+  AzureDevOpsTeam,
+  AzureDevOpsBacklog,
+  AzureDevOpsSavedQuery
 } from '../../shared/types/integrations';
 
 export interface AzureDevOpsWorkItemsProps {
@@ -44,6 +50,7 @@ export interface AzureDevOpsWorkItemsProps {
 
 type StateFilter = 'open' | 'closed' | 'all';
 type TypeFilter = 'all' | 'Bug' | 'Defect' | 'Epic' | 'Feature' | 'Issue' | 'Task' | 'Test Case' | 'User Story';
+type DataSource = 'workitems' | 'backlog' | 'query';
 
 // Work item type to icon mapping
 const workItemTypeIcon: Record<string, React.ElementType> = {
@@ -270,6 +277,16 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
   const [stateFilter, setStateFilter] = useState<StateFilter>('open');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
 
+  // Data source state
+  const [dataSource, setDataSource] = useState<DataSource>('workitems');
+  const [teams, setTeams] = useState<AzureDevOpsTeam[]>([]);
+  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  const [backlogs, setBacklogs] = useState<AzureDevOpsBacklog[]>([]);
+  const [selectedBacklogId, setSelectedBacklogId] = useState<string | null>(null);
+  const [savedQueries, setSavedQueries] = useState<AzureDevOpsSavedQuery[]>([]);
+  const [selectedQueryId, setSelectedQueryId] = useState<string | null>(null);
+  const [isLoadingDataSource, setIsLoadingDataSource] = useState(false);
+
   // Check connection on mount or when project changes
   useEffect(() => {
     const checkConnection = async () => {
@@ -290,7 +307,82 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
     checkConnection();
   }, [selectedProjectId]);
 
-  // Load work items when connected or filter changes
+  // Load teams when data source changes to 'backlog'
+  useEffect(() => {
+    const loadTeams = async () => {
+      if (!selectedProjectId || !syncStatus?.connected || dataSource !== 'backlog') return;
+
+      setIsLoadingDataSource(true);
+      try {
+        const result = await window.electronAPI.getAzureDevOpsTeams(selectedProjectId);
+        if (result.success && result.data) {
+          setTeams(result.data);
+          // Auto-select first team if none selected
+          if (result.data.length > 0 && !selectedTeam) {
+            setSelectedTeam(result.data[0].name);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load teams:', err);
+      } finally {
+        setIsLoadingDataSource(false);
+      }
+    };
+
+    loadTeams();
+  }, [selectedProjectId, syncStatus?.connected, dataSource]);
+
+  // Load backlogs when team changes
+  useEffect(() => {
+    const loadBacklogs = async () => {
+      if (!selectedProjectId || !syncStatus?.connected || dataSource !== 'backlog' || !selectedTeam) return;
+
+      setIsLoadingDataSource(true);
+      try {
+        const result = await window.electronAPI.getAzureDevOpsBacklogs(selectedProjectId, selectedTeam);
+        if (result.success && result.data) {
+          setBacklogs(result.data);
+          // Auto-select first backlog if none selected
+          if (result.data.length > 0 && !selectedBacklogId) {
+            setSelectedBacklogId(result.data[0].id);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load backlogs:', err);
+      } finally {
+        setIsLoadingDataSource(false);
+      }
+    };
+
+    loadBacklogs();
+  }, [selectedProjectId, syncStatus?.connected, dataSource, selectedTeam]);
+
+  // Load saved queries when data source changes to 'query'
+  useEffect(() => {
+    const loadSavedQueries = async () => {
+      if (!selectedProjectId || !syncStatus?.connected || dataSource !== 'query') return;
+
+      setIsLoadingDataSource(true);
+      try {
+        const result = await window.electronAPI.getAzureDevOpsSavedQueries(selectedProjectId);
+        if (result.success && result.data) {
+          setSavedQueries(result.data);
+          // Auto-select first query if none selected
+          if (result.data.length > 0 && !selectedQueryId) {
+            setSelectedQueryId(result.data[0].id);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load saved queries:', err);
+      } finally {
+        setIsLoadingDataSource(false);
+      }
+    };
+
+    loadSavedQueries();
+  }, [selectedProjectId, syncStatus?.connected, dataSource]);
+
+  // Load work items based on data source
   useEffect(() => {
     const loadWorkItems = async () => {
       if (!selectedProjectId || !syncStatus?.connected) return;
@@ -299,11 +391,42 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
       setError(null);
 
       try {
-        const result = await window.electronAPI.getAzureDevOpsWorkItems(selectedProjectId, stateFilter);
-        if (result.success && result.data) {
+        let result;
+
+        if (dataSource === 'workitems') {
+          // Direct WIQL query
+          result = await window.electronAPI.getAzureDevOpsWorkItems(selectedProjectId, stateFilter);
+        } else if (dataSource === 'backlog') {
+          // Load from backlog
+          if (!selectedBacklogId || !selectedTeam) {
+            setWorkItems([]);
+            setIsLoading(false);
+            return;
+          }
+          result = await window.electronAPI.getAzureDevOpsBacklogWorkItems(
+            selectedProjectId,
+            selectedBacklogId,
+            selectedTeam,
+            stateFilter
+          );
+        } else if (dataSource === 'query') {
+          // Execute saved query
+          if (!selectedQueryId) {
+            setWorkItems([]);
+            setIsLoading(false);
+            return;
+          }
+          result = await window.electronAPI.executeAzureDevOpsSavedQuery(
+            selectedProjectId,
+            selectedQueryId,
+            stateFilter
+          );
+        }
+
+        if (result?.success && result.data) {
           setWorkItems(result.data);
         } else {
-          setError(result.error || 'Failed to load work items');
+          setError(result?.error || 'Failed to load work items');
           setWorkItems([]);
         }
       } catch (err) {
@@ -315,7 +438,7 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
     };
 
     loadWorkItems();
-  }, [selectedProjectId, syncStatus?.connected, stateFilter]);
+  }, [selectedProjectId, syncStatus?.connected, stateFilter, dataSource, selectedBacklogId, selectedTeam, selectedQueryId]);
 
   const handleRefresh = useCallback(async () => {
     if (!selectedProjectId) return;
@@ -326,19 +449,45 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
       setSyncStatus(connResult.data);
     }
 
-    // Reload work items
+    // Reload work items based on data source
     if (connResult.data?.connected) {
       setIsLoading(true);
       try {
-        const result = await window.electronAPI.getAzureDevOpsWorkItems(selectedProjectId, stateFilter);
-        if (result.success && result.data) {
+        let result;
+
+        if (dataSource === 'workitems') {
+          result = await window.electronAPI.getAzureDevOpsWorkItems(selectedProjectId, stateFilter);
+        } else if (dataSource === 'backlog' && selectedBacklogId && selectedTeam) {
+          result = await window.electronAPI.getAzureDevOpsBacklogWorkItems(
+            selectedProjectId,
+            selectedBacklogId,
+            selectedTeam,
+            stateFilter
+          );
+        } else if (dataSource === 'query' && selectedQueryId) {
+          result = await window.electronAPI.executeAzureDevOpsSavedQuery(
+            selectedProjectId,
+            selectedQueryId,
+            stateFilter
+          );
+        }
+
+        if (result?.success && result.data) {
           setWorkItems(result.data);
         }
       } finally {
         setIsLoading(false);
       }
     }
-  }, [selectedProjectId, stateFilter]);
+  }, [selectedProjectId, stateFilter, dataSource, selectedBacklogId, selectedTeam, selectedQueryId]);
+
+  // Handle data source change - reset dependent selections
+  const handleDataSourceChange = useCallback((newSource: DataSource) => {
+    setDataSource(newSource);
+    setWorkItems([]);
+    setSelectedWorkItemId(null);
+    setError(null);
+  }, []);
 
   // Filter work items by search and type
   const filteredWorkItems = useMemo(() => {
@@ -402,8 +551,8 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 p-4 border-b border-border bg-muted/30">
-        <div className="relative flex-1 max-w-xs">
+      <div className="flex flex-wrap items-center gap-3 p-4 border-b border-border bg-muted/30">
+        <div className="relative flex-1 max-w-xs min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder={t('filters.search', 'Search work items...')}
@@ -412,6 +561,85 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
             className="pl-9"
           />
         </div>
+
+        {/* Data Source Selector */}
+        <Select value={dataSource} onValueChange={(v) => handleDataSourceChange(v as DataSource)}>
+          <SelectTrigger className="w-[150px]">
+            <Database className="h-4 w-4 mr-2" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="workitems">{t('filters.workItems', 'Work Items')}</SelectItem>
+            <SelectItem value="backlog">{t('filters.backlog', 'Backlog')}</SelectItem>
+            <SelectItem value="query">{t('filters.savedQuery', 'Saved Query')}</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* Team Selector (shown when backlog is selected) */}
+        {dataSource === 'backlog' && (
+          <Select
+            value={selectedTeam || ''}
+            onValueChange={(v) => {
+              setSelectedTeam(v);
+              setSelectedBacklogId(null); // Reset backlog when team changes
+            }}
+            disabled={isLoadingDataSource || teams.length === 0}
+          >
+            <SelectTrigger className="w-[160px]">
+              <Users className="h-4 w-4 mr-2" />
+              <SelectValue placeholder={t('filters.selectTeam', 'Select Team')} />
+            </SelectTrigger>
+            <SelectContent>
+              {teams.map((team) => (
+                <SelectItem key={team.id} value={team.name}>
+                  {team.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {/* Backlog Selector (shown when backlog is selected and team is chosen) */}
+        {dataSource === 'backlog' && selectedTeam && (
+          <Select
+            value={selectedBacklogId || ''}
+            onValueChange={(v) => setSelectedBacklogId(v)}
+            disabled={isLoadingDataSource || backlogs.length === 0}
+          >
+            <SelectTrigger className="w-[180px]">
+              <Layers className="h-4 w-4 mr-2" />
+              <SelectValue placeholder={t('filters.selectBacklog', 'Select Backlog')} />
+            </SelectTrigger>
+            <SelectContent>
+              {backlogs.map((backlog) => (
+                <SelectItem key={backlog.id} value={backlog.id}>
+                  {backlog.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {/* Saved Query Selector (shown when query is selected) */}
+        {dataSource === 'query' && (
+          <Select
+            value={selectedQueryId || ''}
+            onValueChange={(v) => setSelectedQueryId(v)}
+            disabled={isLoadingDataSource || savedQueries.length === 0}
+          >
+            <SelectTrigger className="w-[200px]">
+              <FileQuestion className="h-4 w-4 mr-2" />
+              <SelectValue placeholder={t('filters.selectQuery', 'Select Query')} />
+            </SelectTrigger>
+            <SelectContent>
+              {savedQueries.map((query) => (
+                <SelectItem key={query.id} value={query.id}>
+                  {query.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         <Select value={stateFilter} onValueChange={(v) => setStateFilter(v as StateFilter)}>
           <SelectTrigger className="w-[140px]">

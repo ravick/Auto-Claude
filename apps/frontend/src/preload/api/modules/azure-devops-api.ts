@@ -10,6 +10,9 @@ import type {
   AzureDevOpsInvestigationResult,
   AzureDevOpsPRReviewResult,
   AzureDevOpsPRReviewProgress,
+  AzureDevOpsTeam,
+  AzureDevOpsBacklog,
+  AzureDevOpsSavedQuery,
   IPCResult
 } from '../../../shared/types';
 import { createIpcListener, invokeIpc, sendIpc, IpcListenerCleanup } from './ipc-utils';
@@ -28,6 +31,13 @@ export interface AzureDevOpsAPI {
   getAzureDevOpsWorkItem: (projectId: string, workItemId: number) => Promise<IPCResult<AzureDevOpsWorkItem>>;
   investigateAzureDevOpsWorkItem: (projectId: string, workItemId: number) => void;
   importAzureDevOpsWorkItems: (projectId: string, workItemIds: number[]) => Promise<IPCResult<AzureDevOpsImportResult>>;
+
+  // Data source operations (teams, backlogs, saved queries)
+  getAzureDevOpsTeams: (projectId: string) => Promise<IPCResult<AzureDevOpsTeam[]>>;
+  getAzureDevOpsBacklogs: (projectId: string, teamName?: string) => Promise<IPCResult<AzureDevOpsBacklog[]>>;
+  getAzureDevOpsBacklogWorkItems: (projectId: string, backlogId: string, teamName?: string, state?: 'open' | 'closed' | 'all') => Promise<IPCResult<AzureDevOpsWorkItem[]>>;
+  getAzureDevOpsSavedQueries: (projectId: string) => Promise<IPCResult<AzureDevOpsSavedQuery[]>>;
+  executeAzureDevOpsSavedQuery: (projectId: string, queryId: string, state?: 'open' | 'closed' | 'all') => Promise<IPCResult<AzureDevOpsWorkItem[]>>;
 
   // Pull request operations
   getAzureDevOpsPullRequests: (projectId: string, state?: 'active' | 'completed' | 'abandoned' | 'all') => Promise<IPCResult<AzureDevOpsPullRequest[]>>;
@@ -82,6 +92,22 @@ export const createAzureDevOpsAPI = (): AzureDevOpsAPI => ({
 
   importAzureDevOpsWorkItems: (projectId: string, workItemIds: number[]): Promise<IPCResult<AzureDevOpsImportResult>> =>
     invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_IMPORT_WORK_ITEMS, projectId, workItemIds),
+
+  // Data source operations (teams, backlogs, saved queries)
+  getAzureDevOpsTeams: (projectId: string): Promise<IPCResult<AzureDevOpsTeam[]>> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_GET_TEAMS, projectId),
+
+  getAzureDevOpsBacklogs: (projectId: string, teamName?: string): Promise<IPCResult<AzureDevOpsBacklog[]>> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_GET_BACKLOGS, projectId, teamName),
+
+  getAzureDevOpsBacklogWorkItems: (projectId: string, backlogId: string, teamName?: string, state?: 'open' | 'closed' | 'all'): Promise<IPCResult<AzureDevOpsWorkItem[]>> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_GET_BACKLOG_WORK_ITEMS, projectId, backlogId, teamName, state),
+
+  getAzureDevOpsSavedQueries: (projectId: string): Promise<IPCResult<AzureDevOpsSavedQuery[]>> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_GET_SAVED_QUERIES, projectId),
+
+  executeAzureDevOpsSavedQuery: (projectId: string, queryId: string, state?: 'open' | 'closed' | 'all'): Promise<IPCResult<AzureDevOpsWorkItem[]>> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_EXECUTE_SAVED_QUERY, projectId, queryId, state),
 
   // Pull request operations
   getAzureDevOpsPullRequests: (projectId: string, state?: 'active' | 'completed' | 'abandoned' | 'all'): Promise<IPCResult<AzureDevOpsPullRequest[]>> =>

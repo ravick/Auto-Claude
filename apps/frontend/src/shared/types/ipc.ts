@@ -137,7 +137,10 @@ import type {
   AzureDevOpsInvestigationResult,
   AzureDevOpsInvestigationStatus,
   AzureDevOpsPRReviewResult,
-  AzureDevOpsPRReviewProgress
+  AzureDevOpsPRReviewProgress,
+  AzureDevOpsTeam,
+  AzureDevOpsBacklog,
+  AzureDevOpsSavedQuery
 } from './integrations';
 import type { APIProfile, ProfilesFile, TestConnectionResult, DiscoverModelsResult } from './profile';
 
@@ -555,6 +558,13 @@ export interface ElectronAPI {
   checkAzureDevOpsConnection: (projectId: string) => Promise<IPCResult<AzureDevOpsSyncStatus>>;
   investigateAzureDevOpsWorkItem: (projectId: string, workItemId: number) => void;
   importAzureDevOpsWorkItems: (projectId: string, workItemIds: number[]) => Promise<IPCResult<AzureDevOpsImportResult>>;
+
+  // Azure DevOps data source operations (teams, backlogs, saved queries)
+  getAzureDevOpsTeams: (projectId: string) => Promise<IPCResult<AzureDevOpsTeam[]>>;
+  getAzureDevOpsBacklogs: (projectId: string, teamName?: string) => Promise<IPCResult<AzureDevOpsBacklog[]>>;
+  getAzureDevOpsBacklogWorkItems: (projectId: string, backlogId: string, teamName?: string, state?: 'open' | 'closed' | 'all') => Promise<IPCResult<AzureDevOpsWorkItem[]>>;
+  getAzureDevOpsSavedQueries: (projectId: string) => Promise<IPCResult<AzureDevOpsSavedQuery[]>>;
+  executeAzureDevOpsSavedQuery: (projectId: string, queryId: string, state?: 'open' | 'closed' | 'all') => Promise<IPCResult<AzureDevOpsWorkItem[]>>;
 
   // Azure DevOps Pull Request operations
   getAzureDevOpsPullRequests: (projectId: string, state?: 'active' | 'completed' | 'abandoned' | 'all') => Promise<IPCResult<AzureDevOpsPullRequest[]>>;

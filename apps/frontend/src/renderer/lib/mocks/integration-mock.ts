@@ -437,6 +437,43 @@ export const integrationMock = {
     error: 'Not available in browser mock'
   }),
 
+  // Azure DevOps Data Source Operations
+  getAzureDevOpsTeams: async () => ({
+    success: true,
+    data: [
+      { id: 'team-1', name: 'Default Team', description: 'The default project team' },
+      { id: 'team-2', name: 'Development Team', description: 'Backend developers' }
+    ]
+  }),
+
+  getAzureDevOpsBacklogs: async () => ({
+    success: true,
+    data: [
+      { id: 'Microsoft.RequirementCategory', name: 'Stories', type: 'product' as const, color: '#009CCC' },
+      { id: 'Microsoft.TaskCategory', name: 'Tasks', type: 'product' as const, color: '#F2CB1D' },
+      { id: 'Microsoft.FeatureCategory', name: 'Features', type: 'portfolio' as const, color: '#773B93' },
+      { id: 'Microsoft.EpicCategory', name: 'Epics', type: 'portfolio' as const, color: '#FF7B00' }
+    ]
+  }),
+
+  getAzureDevOpsBacklogWorkItems: async () => ({
+    success: true,
+    data: []
+  }),
+
+  getAzureDevOpsSavedQueries: async () => ({
+    success: true,
+    data: [
+      { id: 'query-1', name: 'My Tasks', path: 'My Queries/My Tasks', isFolder: false, queryType: 'flat' as const },
+      { id: 'query-2', name: 'All Bugs', path: 'Shared Queries/All Bugs', isFolder: false, queryType: 'flat' as const }
+    ]
+  }),
+
+  executeAzureDevOpsSavedQuery: async () => ({
+    success: true,
+    data: []
+  }),
+
   runAzureDevOpsPRReview: () => {
     console.warn('[Browser Mock] runAzureDevOpsPRReview called');
   },

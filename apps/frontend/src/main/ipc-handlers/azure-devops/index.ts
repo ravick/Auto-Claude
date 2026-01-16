@@ -9,6 +9,7 @@ import type { AgentManager } from '../../agent';
 
 import { registerRepositoryHandlers } from './repository-handlers';
 import { registerWorkItemHandlers } from './work-item-handlers';
+import { registerDataSourceHandlers } from './data-source-handlers';
 import { registerInvestigationHandlers } from './investigation-handlers';
 import { registerImportHandlers } from './import-handlers';
 import { registerPRHandlers } from './pr-handlers';
@@ -37,6 +38,9 @@ export function registerAzureDevOpsHandlers(
   // Work item handlers (list, get work items)
   registerWorkItemHandlers();
 
+  // Data source handlers (teams, backlogs, saved queries)
+  registerDataSourceHandlers();
+
   // Investigation handlers (AI-powered)
   registerInvestigationHandlers(agentManager, getMainWindow);
 
@@ -53,6 +57,7 @@ export function registerAzureDevOpsHandlers(
 export {
   registerRepositoryHandlers,
   registerWorkItemHandlers,
+  registerDataSourceHandlers,
   registerInvestigationHandlers,
   registerImportHandlers,
   registerPRHandlers

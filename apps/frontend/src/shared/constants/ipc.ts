@@ -418,6 +418,13 @@ export const IPC_CHANNELS = {
   AZURE_DEVOPS_PR_REVIEW: 'azureDevOps:pr:review',
   AZURE_DEVOPS_PR_POST_COMMENT: 'azureDevOps:pr:postComment',
 
+  // Azure DevOps Data Sources
+  AZURE_DEVOPS_GET_TEAMS: 'azureDevOps:getTeams',
+  AZURE_DEVOPS_GET_BACKLOGS: 'azureDevOps:getBacklogs',
+  AZURE_DEVOPS_GET_BACKLOG_WORK_ITEMS: 'azureDevOps:getBacklogWorkItems',
+  AZURE_DEVOPS_GET_SAVED_QUERIES: 'azureDevOps:getSavedQueries',
+  AZURE_DEVOPS_EXECUTE_SAVED_QUERY: 'azureDevOps:executeSavedQuery',
+
   // Azure DevOps events (main -> renderer)
   AZURE_DEVOPS_INVESTIGATION_PROGRESS: 'azureDevOps:investigationProgress',
   AZURE_DEVOPS_INVESTIGATION_COMPLETE: 'azureDevOps:investigationComplete',
