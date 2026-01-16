@@ -410,7 +410,13 @@ export const integrationMock = {
 
   getAzureDevOpsWorkItems: async () => ({
     success: true,
-    data: []
+    data: {
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 50,
+      hasMore: false
+    }
   }),
 
   getAzureDevOpsWorkItem: async () => ({

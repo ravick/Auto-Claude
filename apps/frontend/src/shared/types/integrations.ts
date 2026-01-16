@@ -467,11 +467,20 @@ export interface AzureDevOpsWorkItem {
     imageUrl?: string;
   };
   iteration?: string;
+  priority?: number;
   createdDate: string;
   changedDate: string;
   url: string;
   organizationUrl: string;
   project: string;
+}
+
+export interface AzureDevOpsWorkItemsResult {
+  items: AzureDevOpsWorkItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
 }
 
 export interface AzureDevOpsPullRequest {

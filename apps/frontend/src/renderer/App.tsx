@@ -42,6 +42,7 @@ import { GitLabIssues } from './components/GitLabIssues';
 import { GitHubPRs } from './components/github-prs';
 import { GitLabMergeRequests } from './components/gitlab-merge-requests';
 import { AzureDevOpsWorkItems } from './components/AzureDevOpsWorkItems';
+import { AzureDevOpsPRs } from './components/azure-devops-prs';
 import { Changelog } from './components/Changelog';
 import { Worktrees } from './components/Worktrees';
 import { AgentTools } from './components/AgentTools';
@@ -884,12 +885,12 @@ export function App() {
                   />
                 )}
                 {activeView === 'azure-devops-prs' && (activeProjectId || selectedProjectId) && (
-                  <AzureDevOpsWorkItems
+                  <AzureDevOpsPRs
+                    projectId={activeProjectId || selectedProjectId!}
                     onOpenSettings={() => {
                       setSettingsInitialProjectSection('azure-devops');
                       setIsSettingsDialogOpen(true);
                     }}
-                    onNavigateToTask={handleGoToTask}
                   />
                 )}
                 {activeView === 'changelog' && (activeProjectId || selectedProjectId) && (

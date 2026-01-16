@@ -6,7 +6,7 @@ import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../../shared/constants';
 import type { IPCResult } from '../../../shared/types';
 import type { AzureDevOpsSyncStatus, AzureDevOpsProject, AzureDevOpsRepository } from '../../../shared/types/integrations';
-import type { ADOProjectListResponse, ADORepositoryListResponse, ADOWiqlQueryResponse } from './types';
+import type { ADOProjectListResponse, ADORepositoryListResponse } from './types';
 import { getAzureDevOpsConfig, adoFetch, debugLog, getProjectFromStore } from './utils';
 
 /**
@@ -90,23 +90,8 @@ export function registerCheckConnection(): void {
         const projectData = await response.json();
         debugLog('Project info retrieved:', projectData.name);
 
-        // Count work items using WIQL
-        let workItemCount = 0;
-        try {
-          const wiqlResult = await adoFetch<ADOWiqlQueryResponse>(
-            config,
-            '/wiql',
-            {
-              method: 'POST',
-              body: JSON.stringify({
-                query: "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.State] <> 'Closed' AND [System.State] <> 'Removed'"
-              }),
-            }
-          );
-          workItemCount = wiqlResult.workItems?.length || 0;
-        } catch (e) {
-          debugLog('Could not count work items:', e);
-        }
+        // Note: We don't fetch work item count here to avoid performance issues
+        // with large projects. Work item counts are fetched on-demand in the UI.
 
         return {
           success: true,
@@ -115,7 +100,6 @@ export function registerCheckConnection(): void {
             organization: config.organization,
             project: projectData.name,
             repository: config.repository,
-            workItemCount,
             lastSyncedAt: new Date().toISOString(),
           }
         };

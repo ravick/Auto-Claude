@@ -89,12 +89,25 @@ export function AzureDevOpsIntegration({
   ]);
 
   // Fetch branches when enabled and project path is available
+  // Note: This fetches LOCAL git branches, not dependent on Azure DevOps connection
   useEffect(() => {
-    if (envConfig?.azureDevOpsEnabled && projectPath) {
+    // Only fetch if Azure DevOps is enabled and we have a project path
+    // Also re-fetch when component mounts or projectPath changes
+    if (envConfig?.azureDevOpsEnabled && projectPath && branches.length === 0) {
+      debugLog('Triggering branch fetch', { azureDevOpsEnabled: envConfig.azureDevOpsEnabled, projectPath });
       fetchBranches();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [envConfig?.azureDevOpsEnabled, projectPath]);
+
+  // Re-fetch branches if they were cleared (e.g., after state reset)
+  useEffect(() => {
+    if (envConfig?.azureDevOpsEnabled && projectPath && branches.length === 0 && !isLoadingBranches && !branchesError) {
+      debugLog('Re-fetching branches after state reset');
+      fetchBranches();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branches.length, isLoadingBranches, branchesError]);
 
   /**
    * Handler for branch selection changes.
@@ -144,15 +157,22 @@ export function AzureDevOpsIntegration({
       return;
     }
 
+    // Prevent multiple concurrent fetches
+    if (isLoadingBranches) {
+      debugLog('fetchBranches: Already loading, skipping');
+      return;
+    }
+
     debugLog('fetchBranches: Starting with projectPath:', projectPath);
     setIsLoadingBranches(true);
     setBranchesError(null);
 
     try {
       const result = await window.electronAPI.getGitBranches(projectPath);
-      debugLog('fetchBranches result:', { success: result.success, count: result.data?.length });
+      debugLog('fetchBranches result:', { success: result.success, count: result.data?.length, data: result.data?.slice(0, 5) });
 
-      if (result.success && result.data) {
+      if (result.success && result.data && result.data.length > 0) {
+        debugLog(`Setting branches state with ${result.data.length} branches`);
         setBranches(result.data);
 
         // Auto-detect default branch if not set
@@ -163,6 +183,9 @@ export function AzureDevOpsIntegration({
             handleBranchChange(detectResult.data);
           }
         }
+      } else if (result.success && (!result.data || result.data.length === 0)) {
+        debugLog('fetchBranches: No branches found');
+        setBranchesError('No branches found in repository');
       } else {
         setBranchesError(result.error || 'Failed to load branches');
       }
@@ -320,11 +343,6 @@ function ConnectionStatus({ isChecking, connectionStatus }: ConnectionStatusProp
                 ? `Connected to ${connectionStatus.organization}/${connectionStatus.project}`
                 : connectionStatus?.error || 'Not connected'}
           </p>
-          {connectionStatus?.connected && connectionStatus.workItemCount !== undefined && (
-            <p className="text-xs text-muted-foreground mt-1">
-              {connectionStatus.workItemCount}+ work items available
-            </p>
-          )}
         </div>
         {isChecking ? (
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

@@ -131,6 +131,7 @@ import type {
   AzureDevOpsProject,
   AzureDevOpsRepository,
   AzureDevOpsWorkItem,
+  AzureDevOpsWorkItemsResult,
   AzureDevOpsPullRequest,
   AzureDevOpsSyncStatus,
   AzureDevOpsImportResult,
@@ -553,7 +554,16 @@ export interface ElectronAPI {
   // Azure DevOps integration operations
   getAzureDevOpsProjects: (projectId: string) => Promise<IPCResult<AzureDevOpsProject[]>>;
   getAzureDevOpsRepositories: (projectId: string) => Promise<IPCResult<AzureDevOpsRepository[]>>;
-  getAzureDevOpsWorkItems: (projectId: string, state?: 'open' | 'closed' | 'all') => Promise<IPCResult<AzureDevOpsWorkItem[]>>;
+  getAzureDevOpsWorkItems: (
+    projectId: string,
+    state?: 'open' | 'closed' | 'all',
+    options?: {
+      sortBy?: 'changedDate' | 'createdDate' | 'title' | 'state' | 'priority' | 'workItemType';
+      sortOrder?: 'asc' | 'desc';
+      page?: number;
+      pageSize?: number;
+    }
+  ) => Promise<IPCResult<AzureDevOpsWorkItemsResult>>;
   getAzureDevOpsWorkItem: (projectId: string, workItemId: number) => Promise<IPCResult<AzureDevOpsWorkItem>>;
   checkAzureDevOpsConnection: (projectId: string) => Promise<IPCResult<AzureDevOpsSyncStatus>>;
   investigateAzureDevOpsWorkItem: (projectId: string, workItemId: number) => void;

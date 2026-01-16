@@ -3,6 +3,7 @@ import type {
   AzureDevOpsProject,
   AzureDevOpsRepository,
   AzureDevOpsWorkItem,
+  AzureDevOpsWorkItemsResult,
   AzureDevOpsPullRequest,
   AzureDevOpsSyncStatus,
   AzureDevOpsImportResult,
@@ -18,6 +19,16 @@ import type {
 import { createIpcListener, invokeIpc, sendIpc, IpcListenerCleanup } from './ipc-utils';
 
 /**
+ * Work item query options for sorting and pagination
+ */
+export interface WorkItemQueryOptions {
+  sortBy?: 'changedDate' | 'createdDate' | 'title' | 'state' | 'priority' | 'workItemType';
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  pageSize?: number;
+}
+
+/**
  * Azure DevOps Integration API operations
  */
 export interface AzureDevOpsAPI {
@@ -27,7 +38,7 @@ export interface AzureDevOpsAPI {
   checkAzureDevOpsConnection: (projectId: string) => Promise<IPCResult<AzureDevOpsSyncStatus>>;
 
   // Work item operations
-  getAzureDevOpsWorkItems: (projectId: string, state?: 'open' | 'closed' | 'all') => Promise<IPCResult<AzureDevOpsWorkItem[]>>;
+  getAzureDevOpsWorkItems: (projectId: string, state?: 'open' | 'closed' | 'all', options?: WorkItemQueryOptions) => Promise<IPCResult<AzureDevOpsWorkItemsResult>>;
   getAzureDevOpsWorkItem: (projectId: string, workItemId: number) => Promise<IPCResult<AzureDevOpsWorkItem>>;
   investigateAzureDevOpsWorkItem: (projectId: string, workItemId: number) => void;
   importAzureDevOpsWorkItems: (projectId: string, workItemIds: number[]) => Promise<IPCResult<AzureDevOpsImportResult>>;
@@ -81,8 +92,8 @@ export const createAzureDevOpsAPI = (): AzureDevOpsAPI => ({
     invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_CHECK_CONNECTION, projectId),
 
   // Work item operations
-  getAzureDevOpsWorkItems: (projectId: string, state?: 'open' | 'closed' | 'all'): Promise<IPCResult<AzureDevOpsWorkItem[]>> =>
-    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_GET_WORK_ITEMS, projectId, state),
+  getAzureDevOpsWorkItems: (projectId: string, state?: 'open' | 'closed' | 'all', options?: WorkItemQueryOptions): Promise<IPCResult<AzureDevOpsWorkItemsResult>> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_GET_WORK_ITEMS, projectId, state, options),
 
   getAzureDevOpsWorkItem: (projectId: string, workItemId: number): Promise<IPCResult<AzureDevOpsWorkItem>> =>
     invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_GET_WORK_ITEM, projectId, workItemId),

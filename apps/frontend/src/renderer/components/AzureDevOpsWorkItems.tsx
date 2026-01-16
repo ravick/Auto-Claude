@@ -23,7 +23,10 @@ import {
   Sparkles,
   Eye,
   CheckCircle2,
-  Loader2
+  Loader2,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -57,6 +60,8 @@ export interface AzureDevOpsWorkItemsProps {
 type StateFilter = 'open' | 'closed' | 'all';
 type TypeFilter = 'all' | 'Bug' | 'Defect' | 'Epic' | 'Feature' | 'Issue' | 'Task' | 'Test Case' | 'User Story';
 type DataSource = 'workitems' | 'backlog' | 'query';
+type SortBy = 'changedDate' | 'createdDate' | 'title' | 'state' | 'priority' | 'workItemType';
+type SortOrder = 'asc' | 'desc';
 
 // Work item type to icon mapping
 const workItemTypeIcon: Record<string, React.ElementType> = {
@@ -404,6 +409,14 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
   const [stateFilter, setStateFilter] = useState<StateFilter>('open');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
 
+  // Sorting and pagination state
+  const [sortBy, setSortBy] = useState<SortBy>('changedDate');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(50);
+  const [totalItems, setTotalItems] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+
   // Data source state
   const [dataSource, setDataSource] = useState<DataSource>('workitems');
   const [teams, setTeams] = useState<AzureDevOpsTeam[]>([]);
@@ -574,54 +587,88 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
       setError(null);
 
       try {
-        let result;
-
         if (dataSource === 'workitems') {
-          // Direct WIQL query
-          result = await window.electronAPI.getAzureDevOpsWorkItems(selectedProjectId, stateFilter);
+          // Direct WIQL query with sorting and pagination
+          const result = await window.electronAPI.getAzureDevOpsWorkItems(
+            selectedProjectId,
+            stateFilter,
+            { sortBy, sortOrder, page, pageSize }
+          );
+
+          if (result?.success && result.data) {
+            setWorkItems(result.data.items);
+            setTotalItems(result.data.total);
+            setHasMore(result.data.hasMore);
+          } else {
+            setError(result?.error || 'Failed to load work items');
+            setWorkItems([]);
+            setTotalItems(0);
+            setHasMore(false);
+          }
         } else if (dataSource === 'backlog') {
-          // Load from backlog
+          // Load from backlog (no pagination support yet)
           if (!selectedBacklogId || !selectedTeam) {
             setWorkItems([]);
+            setTotalItems(0);
+            setHasMore(false);
             setIsLoading(false);
             return;
           }
-          result = await window.electronAPI.getAzureDevOpsBacklogWorkItems(
+          const result = await window.electronAPI.getAzureDevOpsBacklogWorkItems(
             selectedProjectId,
             selectedBacklogId,
             selectedTeam,
             stateFilter
           );
+
+          if (result?.success && result.data) {
+            setWorkItems(result.data);
+            setTotalItems(result.data.length);
+            setHasMore(false);
+          } else {
+            setError(result?.error || 'Failed to load work items');
+            setWorkItems([]);
+            setTotalItems(0);
+            setHasMore(false);
+          }
         } else if (dataSource === 'query') {
-          // Execute saved query
+          // Execute saved query (no pagination support yet)
           if (!selectedQueryId) {
             setWorkItems([]);
+            setTotalItems(0);
+            setHasMore(false);
             setIsLoading(false);
             return;
           }
-          result = await window.electronAPI.executeAzureDevOpsSavedQuery(
+          const result = await window.electronAPI.executeAzureDevOpsSavedQuery(
             selectedProjectId,
             selectedQueryId,
             stateFilter
           );
-        }
 
-        if (result?.success && result.data) {
-          setWorkItems(result.data);
-        } else {
-          setError(result?.error || 'Failed to load work items');
-          setWorkItems([]);
+          if (result?.success && result.data) {
+            setWorkItems(result.data);
+            setTotalItems(result.data.length);
+            setHasMore(false);
+          } else {
+            setError(result?.error || 'Failed to load work items');
+            setWorkItems([]);
+            setTotalItems(0);
+            setHasMore(false);
+          }
         }
       } catch (err) {
         setError('Failed to load work items');
         setWorkItems([]);
+        setTotalItems(0);
+        setHasMore(false);
       } finally {
         setIsLoading(false);
       }
     };
 
     loadWorkItems();
-  }, [selectedProjectId, syncStatus?.connected, stateFilter, dataSource, selectedBacklogId, selectedTeam, selectedQueryId]);
+  }, [selectedProjectId, syncStatus?.connected, stateFilter, dataSource, selectedBacklogId, selectedTeam, selectedQueryId, sortBy, sortOrder, page, pageSize]);
 
   const handleRefresh = useCallback(async () => {
     if (!selectedProjectId) return;
@@ -636,33 +683,46 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
     if (connResult.data?.connected) {
       setIsLoading(true);
       try {
-        let result;
-
         if (dataSource === 'workitems') {
-          result = await window.electronAPI.getAzureDevOpsWorkItems(selectedProjectId, stateFilter);
+          const result = await window.electronAPI.getAzureDevOpsWorkItems(
+            selectedProjectId,
+            stateFilter,
+            { sortBy, sortOrder, page, pageSize }
+          );
+          if (result?.success && result.data) {
+            setWorkItems(result.data.items);
+            setTotalItems(result.data.total);
+            setHasMore(result.data.hasMore);
+          }
         } else if (dataSource === 'backlog' && selectedBacklogId && selectedTeam) {
-          result = await window.electronAPI.getAzureDevOpsBacklogWorkItems(
+          const result = await window.electronAPI.getAzureDevOpsBacklogWorkItems(
             selectedProjectId,
             selectedBacklogId,
             selectedTeam,
             stateFilter
           );
+          if (result?.success && result.data) {
+            setWorkItems(result.data);
+            setTotalItems(result.data.length);
+            setHasMore(false);
+          }
         } else if (dataSource === 'query' && selectedQueryId) {
-          result = await window.electronAPI.executeAzureDevOpsSavedQuery(
+          const result = await window.electronAPI.executeAzureDevOpsSavedQuery(
             selectedProjectId,
             selectedQueryId,
             stateFilter
           );
-        }
-
-        if (result?.success && result.data) {
-          setWorkItems(result.data);
+          if (result?.success && result.data) {
+            setWorkItems(result.data);
+            setTotalItems(result.data.length);
+            setHasMore(false);
+          }
         }
       } finally {
         setIsLoading(false);
       }
     }
-  }, [selectedProjectId, stateFilter, dataSource, selectedBacklogId, selectedTeam, selectedQueryId]);
+  }, [selectedProjectId, stateFilter, dataSource, selectedBacklogId, selectedTeam, selectedQueryId, sortBy, sortOrder, page, pageSize]);
 
   // Handle data source change - reset dependent selections
   const handleDataSourceChange = useCallback((newSource: DataSource) => {
@@ -670,6 +730,9 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
     setWorkItems([]);
     setSelectedWorkItemId(null);
     setError(null);
+    setPage(1);
+    setTotalItems(0);
+    setHasMore(false);
   }, []);
 
   // Handle investigate work item (Create Task)
@@ -694,6 +757,29 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
       onNavigateToTask(taskId);
     }
   }, [onNavigateToTask]);
+
+  // Handle sorting change
+  const handleSortChange = useCallback((newSortBy: SortBy) => {
+    if (newSortBy === sortBy) {
+      // Toggle sort order if clicking the same field
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(newSortBy);
+      setSortOrder('desc');
+    }
+    setPage(1); // Reset to first page when sorting changes
+  }, [sortBy, sortOrder]);
+
+  // Handle page change
+  const handlePageChange = useCallback((newPage: number) => {
+    setPage(newPage);
+    setSelectedWorkItemId(null);
+  }, []);
+
+  // Calculate total pages
+  const totalPages = useMemo(() => {
+    return Math.ceil(totalItems / pageSize);
+  }, [totalItems, pageSize]);
 
   // Filter work items by search and type
   const filteredWorkItems = useMemo(() => {
@@ -875,6 +961,37 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
             <SelectItem value="User Story">{t('filters.userStory', 'User Story')}</SelectItem>
           </SelectContent>
         </Select>
+
+        {/* Sort control - only for direct work items query */}
+        {dataSource === 'workitems' && (
+          <Select value={sortBy} onValueChange={(v) => handleSortChange(v as SortBy)}>
+            <SelectTrigger className="w-[160px]">
+              <ArrowUpDown className="h-4 w-4 mr-2" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="changedDate">{t('sort.changedDate', 'Changed Date')}</SelectItem>
+              <SelectItem value="createdDate">{t('sort.createdDate', 'Created Date')}</SelectItem>
+              <SelectItem value="title">{t('sort.title', 'Title')}</SelectItem>
+              <SelectItem value="state">{t('sort.state', 'State')}</SelectItem>
+              <SelectItem value="priority">{t('sort.priority', 'Priority')}</SelectItem>
+              <SelectItem value="workItemType">{t('sort.workItemType', 'Type')}</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+
+        {/* Sort order toggle - only for direct work items query */}
+        {dataSource === 'workitems' && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+            className="px-2"
+            title={sortOrder === 'asc' ? t('sort.ascending', 'Ascending') : t('sort.descending', 'Descending')}
+          >
+            {sortOrder === 'asc' ? '↑' : '↓'}
+          </Button>
+        )}
       </div>
 
       {/* Content */}
@@ -914,6 +1031,38 @@ export function AzureDevOpsWorkItems({ onOpenSettings, onNavigateToTask }: Azure
               ))
             )}
           </ScrollArea>
+
+          {/* Pagination controls - only for direct work items query */}
+          {dataSource === 'workitems' && totalItems > 0 && (
+            <div className="flex items-center justify-between px-3 py-2 border-t border-border bg-muted/30">
+              <span className="text-xs text-muted-foreground">
+                {t('pagination.showing', 'Showing')} {((page - 1) * pageSize) + 1}-{Math.min(page * pageSize, totalItems)} {t('pagination.of', 'of')} {totalItems}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(page - 1)}
+                  disabled={page === 1 || isLoading}
+                  className="h-7 w-7 p-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-xs text-muted-foreground px-2">
+                  {t('pagination.page', 'Page')} {page} {t('pagination.of', 'of')} {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(page + 1)}
+                  disabled={!hasMore || isLoading}
+                  className="h-7 w-7 p-0"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Work Item Detail */}

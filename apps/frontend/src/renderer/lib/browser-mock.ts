@@ -232,7 +232,7 @@ const browserMockAPI: ElectronAPI = {
   // Azure DevOps Integration Operations
   getAzureDevOpsProjects: async () => ({ success: true, data: [] }),
   getAzureDevOpsRepositories: async () => ({ success: true, data: [] }),
-  getAzureDevOpsWorkItems: async () => ({ success: true, data: [] }),
+  getAzureDevOpsWorkItems: async () => ({ success: true, data: { items: [], total: 0, page: 1, pageSize: 50, hasMore: false } }),
   getAzureDevOpsWorkItem: async () => ({ success: true, data: null as any }),
   checkAzureDevOpsConnection: async () => ({ success: true, data: { connected: false } }),
   investigateAzureDevOpsWorkItem: () => { console.warn('[Browser Mock] investigateAzureDevOpsWorkItem called'); },
