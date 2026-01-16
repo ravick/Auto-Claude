@@ -425,6 +425,157 @@ export interface GitLabTriageResult {
 }
 
 // ============================================
+// Azure DevOps Integration Types
+// ============================================
+
+export interface AzureDevOpsProject {
+  id: string;
+  name: string;
+  description?: string;
+  url: string;
+  state: 'wellFormed' | 'createPending' | 'deleted' | 'deleting' | 'new' | 'unchanged';
+  visibility: 'private' | 'public';
+}
+
+export interface AzureDevOpsRepository {
+  id: string;
+  name: string;
+  url: string;
+  webUrl: string;
+  defaultBranch: string;
+  project: {
+    id: string;
+    name: string;
+  };
+}
+
+export interface AzureDevOpsWorkItem {
+  id: number;
+  title: string;
+  description?: string;
+  state: string;
+  workItemType: string; // Bug, Task, User Story, Epic, Feature
+  tags: string[];
+  assignedTo?: {
+    displayName: string;
+    uniqueName: string;
+    imageUrl?: string;
+  };
+  createdBy: {
+    displayName: string;
+    uniqueName: string;
+    imageUrl?: string;
+  };
+  iteration?: string;
+  createdDate: string;
+  changedDate: string;
+  url: string;
+  organizationUrl: string;
+  project: string;
+}
+
+export interface AzureDevOpsPullRequest {
+  pullRequestId: number;
+  title: string;
+  description?: string;
+  status: 'active' | 'abandoned' | 'completed';
+  sourceBranch: string;
+  targetBranch: string;
+  createdBy: {
+    displayName: string;
+    uniqueName: string;
+    imageUrl?: string;
+  };
+  reviewers: Array<{
+    displayName: string;
+    uniqueName: string;
+    vote: number; // -10 rejected, -5 waiting, 0 no vote, 5 approved with suggestions, 10 approved
+    isRequired?: boolean;
+  }>;
+  labels: Array<{ name: string }>;
+  webUrl: string;
+  creationDate: string;
+  closedDate?: string;
+  isDraft: boolean;
+  mergeStatus: string;
+  repository: {
+    name: string;
+    project: { name: string };
+  };
+}
+
+export interface AzureDevOpsSyncStatus {
+  connected: boolean;
+  organization?: string;
+  project?: string;
+  repository?: string;
+  workItemCount?: number;
+  lastSyncedAt?: string;
+  error?: string;
+}
+
+export interface AzureDevOpsImportResult {
+  success: boolean;
+  imported: number;
+  failed: number;
+  errors?: string[];
+  tasks?: import('./task').Task[];
+}
+
+export interface AzureDevOpsInvestigationResult {
+  success: boolean;
+  workItemId: number;
+  analysis: {
+    summary: string;
+    proposedSolution: string;
+    affectedFiles: string[];
+    estimatedComplexity: 'simple' | 'standard' | 'complex';
+    acceptanceCriteria: string[];
+  };
+  taskId?: string;
+  error?: string;
+}
+
+export interface AzureDevOpsInvestigationStatus {
+  phase: 'idle' | 'fetching' | 'analyzing' | 'creating_task' | 'complete' | 'error';
+  workItemId?: number;
+  progress: number;
+  message: string;
+  error?: string;
+}
+
+export interface AzureDevOpsPRReviewFinding {
+  id: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  category: 'security' | 'quality' | 'style' | 'test' | 'docs' | 'pattern' | 'performance';
+  title: string;
+  description: string;
+  file: string;
+  line: number;
+  endLine?: number;
+  suggestedFix?: string;
+  fixable: boolean;
+}
+
+export interface AzureDevOpsPRReviewResult {
+  pullRequestId: number;
+  repository: string;
+  success: boolean;
+  findings: AzureDevOpsPRReviewFinding[];
+  summary: string;
+  overallStatus: 'approve' | 'request_changes' | 'comment';
+  reviewedAt: string;
+  reviewedCommitSha?: string;
+}
+
+export interface AzureDevOpsPRReviewProgress {
+  phase: 'fetching' | 'analyzing' | 'generating' | 'posting' | 'complete';
+  pullRequestId: number;
+  progress: number;
+  message: string;
+}
+
+// ============================================
 // Roadmap Integration Types (Canny, etc.)
 // ============================================
 

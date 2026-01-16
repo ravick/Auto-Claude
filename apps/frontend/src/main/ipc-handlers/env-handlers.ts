@@ -134,6 +134,25 @@ export function registerEnvHandlers(
     if (config.gitlabAutoSync !== undefined) {
       existingVars[GITLAB_ENV_KEYS.AUTO_SYNC] = config.gitlabAutoSync ? 'true' : 'false';
     }
+    // Azure DevOps Integration
+    if (config.azureDevOpsEnabled !== undefined) {
+      existingVars['AZURE_DEVOPS_ENABLED'] = config.azureDevOpsEnabled ? 'true' : 'false';
+    }
+    if (config.azureDevOpsOrganization !== undefined) {
+      existingVars['AZURE_DEVOPS_ORGANIZATION'] = config.azureDevOpsOrganization;
+    }
+    if (config.azureDevOpsProject !== undefined) {
+      existingVars['AZURE_DEVOPS_PROJECT'] = config.azureDevOpsProject;
+    }
+    if (config.azureDevOpsPat !== undefined) {
+      existingVars['AZURE_DEVOPS_PAT'] = config.azureDevOpsPat;
+    }
+    if (config.azureDevOpsRepository !== undefined) {
+      existingVars['AZURE_DEVOPS_REPOSITORY'] = config.azureDevOpsRepository;
+    }
+    if (config.azureDevOpsAutoSync !== undefined) {
+      existingVars['AZURE_DEVOPS_AUTO_SYNC'] = config.azureDevOpsAutoSync ? 'true' : 'false';
+    }
     // Git/Worktree Settings
     if (config.defaultBranch !== undefined) {
       existingVars['DEFAULT_BRANCH'] = config.defaultBranch;
@@ -262,6 +281,16 @@ ${envLine(existingVars, GITLAB_ENV_KEYS.PROJECT, 'group/project')}
 ${envLine(existingVars, GITLAB_ENV_KEYS.AUTO_SYNC, 'false')}
 
 # =============================================================================
+# AZURE DEVOPS INTEGRATION (OPTIONAL)
+# =============================================================================
+${existingVars['AZURE_DEVOPS_ENABLED'] !== undefined ? `AZURE_DEVOPS_ENABLED=${existingVars['AZURE_DEVOPS_ENABLED']}` : '# AZURE_DEVOPS_ENABLED=false'}
+${existingVars['AZURE_DEVOPS_ORGANIZATION'] ? `AZURE_DEVOPS_ORGANIZATION=${existingVars['AZURE_DEVOPS_ORGANIZATION']}` : '# AZURE_DEVOPS_ORGANIZATION=mycompany'}
+${existingVars['AZURE_DEVOPS_PROJECT'] ? `AZURE_DEVOPS_PROJECT=${existingVars['AZURE_DEVOPS_PROJECT']}` : '# AZURE_DEVOPS_PROJECT=MyProject'}
+${existingVars['AZURE_DEVOPS_PAT'] ? `AZURE_DEVOPS_PAT=${existingVars['AZURE_DEVOPS_PAT']}` : '# AZURE_DEVOPS_PAT='}
+${existingVars['AZURE_DEVOPS_REPOSITORY'] ? `AZURE_DEVOPS_REPOSITORY=${existingVars['AZURE_DEVOPS_REPOSITORY']}` : '# AZURE_DEVOPS_REPOSITORY='}
+${existingVars['AZURE_DEVOPS_AUTO_SYNC'] !== undefined ? `AZURE_DEVOPS_AUTO_SYNC=${existingVars['AZURE_DEVOPS_AUTO_SYNC']}` : '# AZURE_DEVOPS_AUTO_SYNC=false'}
+
+# =============================================================================
 # GIT/WORKTREE SETTINGS (OPTIONAL)
 # =============================================================================
 # Default base branch for worktree creation
@@ -373,6 +402,7 @@ ${existingVars['GRAPHITI_DB_PATH'] ? `GRAPHITI_DB_PATH=${existingVars['GRAPHITI_
         linearEnabled: false,
         githubEnabled: false,
         gitlabEnabled: false,
+        azureDevOpsEnabled: false,
         graphitiEnabled: false,
         enableFancyUi: true,
         claudeTokenIsGlobal: false,
@@ -445,6 +475,26 @@ ${existingVars['GRAPHITI_DB_PATH'] ? `GRAPHITI_DB_PATH=${existingVars['GRAPHITI_
       }
       if (vars[GITLAB_ENV_KEYS.AUTO_SYNC]?.toLowerCase() === 'true') {
         config.gitlabAutoSync = true;
+      }
+
+      // Azure DevOps config
+      if (vars['AZURE_DEVOPS_ENABLED']?.toLowerCase() === 'true') {
+        config.azureDevOpsEnabled = true;
+      }
+      if (vars['AZURE_DEVOPS_ORGANIZATION']) {
+        config.azureDevOpsOrganization = vars['AZURE_DEVOPS_ORGANIZATION'];
+      }
+      if (vars['AZURE_DEVOPS_PROJECT']) {
+        config.azureDevOpsProject = vars['AZURE_DEVOPS_PROJECT'];
+      }
+      if (vars['AZURE_DEVOPS_PAT']) {
+        config.azureDevOpsPat = vars['AZURE_DEVOPS_PAT'];
+      }
+      if (vars['AZURE_DEVOPS_REPOSITORY']) {
+        config.azureDevOpsRepository = vars['AZURE_DEVOPS_REPOSITORY'];
+      }
+      if (vars['AZURE_DEVOPS_AUTO_SYNC']?.toLowerCase() === 'true') {
+        config.azureDevOpsAutoSync = true;
       }
 
       // Git/Worktree config

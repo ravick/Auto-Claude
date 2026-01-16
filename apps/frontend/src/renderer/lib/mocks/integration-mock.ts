@@ -11,6 +11,7 @@ export const integrationMock = {
       linearEnabled: false,
       githubEnabled: false,
       gitlabEnabled: false,
+      azureDevOpsEnabled: false,
       graphitiEnabled: false,
       enableFancyUi: true
     }
@@ -386,5 +387,70 @@ export const integrationMock = {
   onGitLabInvestigationError: () => () => {},
 
   // OAuth device code event listener (for streaming device code during auth)
-  onGitHubAuthDeviceCode: () => () => {}
+  onGitHubAuthDeviceCode: () => () => {},
+
+  // Azure DevOps Integration Operations
+  getAzureDevOpsProjects: async () => ({
+    success: true,
+    data: []
+  }),
+
+  getAzureDevOpsRepositories: async () => ({
+    success: true,
+    data: []
+  }),
+
+  checkAzureDevOpsConnection: async () => ({
+    success: true,
+    data: {
+      connected: false,
+      error: 'Not available in browser mock'
+    }
+  }),
+
+  getAzureDevOpsWorkItems: async () => ({
+    success: true,
+    data: []
+  }),
+
+  getAzureDevOpsWorkItem: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  investigateAzureDevOpsWorkItem: () => {
+    console.warn('[Browser Mock] investigateAzureDevOpsWorkItem called');
+  },
+
+  importAzureDevOpsWorkItems: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  getAzureDevOpsPullRequests: async () => ({
+    success: true,
+    data: []
+  }),
+
+  getAzureDevOpsPullRequest: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  runAzureDevOpsPRReview: () => {
+    console.warn('[Browser Mock] runAzureDevOpsPRReview called');
+  },
+
+  postAzureDevOpsPRComment: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  // Azure DevOps Event Listeners
+  onAzureDevOpsInvestigationProgress: () => () => {},
+  onAzureDevOpsInvestigationComplete: () => () => {},
+  onAzureDevOpsInvestigationError: () => () => {},
+  onAzureDevOpsPRReviewProgress: () => () => {},
+  onAzureDevOpsPRReviewComplete: () => () => {},
+  onAzureDevOpsPRReviewError: () => () => {}
 };

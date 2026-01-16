@@ -229,6 +229,25 @@ const browserMockAPI: ElectronAPI = {
     onAnalyzePreviewError: () => () => {}
   },
 
+  // Azure DevOps Integration Operations
+  getAzureDevOpsProjects: async () => ({ success: true, data: [] }),
+  getAzureDevOpsRepositories: async () => ({ success: true, data: [] }),
+  getAzureDevOpsWorkItems: async () => ({ success: true, data: [] }),
+  getAzureDevOpsWorkItem: async () => ({ success: true, data: null as any }),
+  checkAzureDevOpsConnection: async () => ({ success: true, data: { connected: false } }),
+  investigateAzureDevOpsWorkItem: () => { console.warn('[Browser Mock] investigateAzureDevOpsWorkItem called'); },
+  importAzureDevOpsWorkItems: async () => ({ success: true, data: { success: true, imported: 0, failed: 0 } }),
+  getAzureDevOpsPullRequests: async () => ({ success: true, data: [] }),
+  getAzureDevOpsPullRequest: async () => ({ success: true, data: null as any }),
+  runAzureDevOpsPRReview: () => { console.warn('[Browser Mock] runAzureDevOpsPRReview called'); },
+  postAzureDevOpsPRComment: async () => ({ success: true, data: true }),
+  onAzureDevOpsInvestigationProgress: () => () => {},
+  onAzureDevOpsInvestigationComplete: () => () => {},
+  onAzureDevOpsInvestigationError: () => () => {},
+  onAzureDevOpsPRReviewProgress: () => () => {},
+  onAzureDevOpsPRReviewComplete: () => () => {},
+  onAzureDevOpsPRReviewError: () => () => {},
+
   // Claude Code Operations
   checkClaudeCodeVersion: async () => ({
     success: true,

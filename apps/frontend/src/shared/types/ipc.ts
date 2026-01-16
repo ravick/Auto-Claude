@@ -127,7 +127,17 @@ import type {
   GitLabInvestigationStatus,
   GitLabMRReviewResult,
   GitLabMRReviewProgress,
-  GitLabNewCommitsCheck
+  GitLabNewCommitsCheck,
+  AzureDevOpsProject,
+  AzureDevOpsRepository,
+  AzureDevOpsWorkItem,
+  AzureDevOpsPullRequest,
+  AzureDevOpsSyncStatus,
+  AzureDevOpsImportResult,
+  AzureDevOpsInvestigationResult,
+  AzureDevOpsInvestigationStatus,
+  AzureDevOpsPRReviewResult,
+  AzureDevOpsPRReviewProgress
 } from './integrations';
 import type { APIProfile, ProfilesFile, TestConnectionResult, DiscoverModelsResult } from './profile';
 
@@ -534,6 +544,41 @@ export interface ElectronAPI {
     callback: (projectId: string, result: GitLabInvestigationResult) => void
   ) => () => void;
   onGitLabInvestigationError: (
+    callback: (projectId: string, error: string) => void
+  ) => () => void;
+
+  // Azure DevOps integration operations
+  getAzureDevOpsProjects: (projectId: string) => Promise<IPCResult<AzureDevOpsProject[]>>;
+  getAzureDevOpsRepositories: (projectId: string) => Promise<IPCResult<AzureDevOpsRepository[]>>;
+  getAzureDevOpsWorkItems: (projectId: string, state?: 'open' | 'closed' | 'all') => Promise<IPCResult<AzureDevOpsWorkItem[]>>;
+  getAzureDevOpsWorkItem: (projectId: string, workItemId: number) => Promise<IPCResult<AzureDevOpsWorkItem>>;
+  checkAzureDevOpsConnection: (projectId: string) => Promise<IPCResult<AzureDevOpsSyncStatus>>;
+  investigateAzureDevOpsWorkItem: (projectId: string, workItemId: number) => void;
+  importAzureDevOpsWorkItems: (projectId: string, workItemIds: number[]) => Promise<IPCResult<AzureDevOpsImportResult>>;
+
+  // Azure DevOps Pull Request operations
+  getAzureDevOpsPullRequests: (projectId: string, state?: 'active' | 'completed' | 'abandoned' | 'all') => Promise<IPCResult<AzureDevOpsPullRequest[]>>;
+  getAzureDevOpsPullRequest: (projectId: string, pullRequestId: number) => Promise<IPCResult<AzureDevOpsPullRequest>>;
+  runAzureDevOpsPRReview: (projectId: string, pullRequestId: number) => void;
+  postAzureDevOpsPRComment: (projectId: string, pullRequestId: number, content: string, filePath?: string, line?: number) => Promise<IPCResult<boolean>>;
+
+  // Azure DevOps event listeners
+  onAzureDevOpsInvestigationProgress: (
+    callback: (projectId: string, status: AzureDevOpsInvestigationStatus) => void
+  ) => () => void;
+  onAzureDevOpsInvestigationComplete: (
+    callback: (projectId: string, result: AzureDevOpsInvestigationResult) => void
+  ) => () => void;
+  onAzureDevOpsInvestigationError: (
+    callback: (projectId: string, error: string) => void
+  ) => () => void;
+  onAzureDevOpsPRReviewProgress: (
+    callback: (projectId: string, progress: AzureDevOpsPRReviewProgress) => void
+  ) => () => void;
+  onAzureDevOpsPRReviewComplete: (
+    callback: (projectId: string, result: AzureDevOpsPRReviewResult) => void
+  ) => () => void;
+  onAzureDevOpsPRReviewError: (
     callback: (projectId: string, error: string) => void
   ) => () => void;
 

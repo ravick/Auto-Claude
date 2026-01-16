@@ -402,6 +402,30 @@ export const IPC_CHANNELS = {
   GITHUB_TRIAGE_COMPLETE: 'github:triage:complete',
   GITHUB_TRIAGE_ERROR: 'github:triage:error',
 
+  // Azure DevOps integration
+  AZURE_DEVOPS_GET_PROJECTS: 'azureDevOps:getProjects',
+  AZURE_DEVOPS_GET_REPOSITORIES: 'azureDevOps:getRepositories',
+  AZURE_DEVOPS_GET_WORK_ITEMS: 'azureDevOps:getWorkItems',
+  AZURE_DEVOPS_GET_WORK_ITEM: 'azureDevOps:getWorkItem',
+  AZURE_DEVOPS_CHECK_CONNECTION: 'azureDevOps:checkConnection',
+  AZURE_DEVOPS_INVESTIGATE_WORK_ITEM: 'azureDevOps:investigateWorkItem',
+  AZURE_DEVOPS_IMPORT_WORK_ITEMS: 'azureDevOps:importWorkItems',
+
+  // Azure DevOps PR operations
+  AZURE_DEVOPS_PR_LIST: 'azureDevOps:pr:list',
+  AZURE_DEVOPS_PR_GET: 'azureDevOps:pr:get',
+  AZURE_DEVOPS_PR_GET_DIFF: 'azureDevOps:pr:getDiff',
+  AZURE_DEVOPS_PR_REVIEW: 'azureDevOps:pr:review',
+  AZURE_DEVOPS_PR_POST_COMMENT: 'azureDevOps:pr:postComment',
+
+  // Azure DevOps events (main -> renderer)
+  AZURE_DEVOPS_INVESTIGATION_PROGRESS: 'azureDevOps:investigationProgress',
+  AZURE_DEVOPS_INVESTIGATION_COMPLETE: 'azureDevOps:investigationComplete',
+  AZURE_DEVOPS_INVESTIGATION_ERROR: 'azureDevOps:investigationError',
+  AZURE_DEVOPS_PR_REVIEW_PROGRESS: 'azureDevOps:pr:reviewProgress',
+  AZURE_DEVOPS_PR_REVIEW_COMPLETE: 'azureDevOps:pr:reviewComplete',
+  AZURE_DEVOPS_PR_REVIEW_ERROR: 'azureDevOps:pr:reviewError',
+
   // Memory Infrastructure status (LadybugDB - no Docker required)
   MEMORY_STATUS: 'memory:status',
   MEMORY_LIST_DATABASES: 'memory:listDatabases',
