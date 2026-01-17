@@ -425,6 +425,16 @@ export const IPC_CHANNELS = {
   AZURE_DEVOPS_GET_SAVED_QUERIES: 'azureDevOps:getSavedQueries',
   AZURE_DEVOPS_EXECUTE_SAVED_QUERY: 'azureDevOps:executeSavedQuery',
 
+  // Azure DevOps Auth/Setup Channels
+  AZURE_DEVOPS_DETECT_REPO: 'azureDevOps:detectRepo',
+  AZURE_DEVOPS_VALIDATE_PAT: 'azureDevOps:validatePat',
+  AZURE_DEVOPS_LIST_ORGANIZATIONS: 'azureDevOps:listOrganizations',
+  AZURE_DEVOPS_ADD_REMOTE: 'azureDevOps:addRemote',
+  AZURE_DEVOPS_GET_BRANCHES: 'azureDevOps:getBranches',
+  AZURE_DEVOPS_CREATE_REPO: 'azureDevOps:createRepo',
+  AZURE_DEVOPS_LIST_PROJECTS_WITH_PAT: 'azureDevOps:listProjectsWithPat',
+  AZURE_DEVOPS_LIST_REPOS_WITH_PAT: 'azureDevOps:listReposWithPat',
+
   // Azure DevOps events (main -> renderer)
   AZURE_DEVOPS_INVESTIGATION_PROGRESS: 'azureDevOps:investigationProgress',
   AZURE_DEVOPS_INVESTIGATION_COMPLETE: 'azureDevOps:investigationComplete',

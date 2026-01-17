@@ -46,6 +46,26 @@
     "selectOrgAriaLabel": "Sélectionner {{org}} comme propriétaire du dépôt",
     "selectVisibilityAriaLabel": "Définir la visibilité du dépôt sur {{visibility}}"
   },
+  "azureDevOpsSetup": {
+    "connectTitle": "Connecter à Azure DevOps",
+    "connectDescription": "Entrez votre jeton d'accès personnel pour vous connecter à Azure DevOps.",
+    "patTitle": "Jeton d'accès personnel",
+    "patPlaceholder": "Collez votre jeton d'accès personnel",
+    "patHelp": "Créez un PAT avec la portée Code (Lecture, Écriture) dans les paramètres Azure DevOps.",
+    "createPatLink": "Créer un PAT dans Azure DevOps",
+    "organizationTitle": "Sélectionner l'organisation",
+    "projectTitle": "Sélectionner le projet",
+    "repositoryTitle": "Sélectionner le dépôt",
+    "createRepo": "Créer un nouveau dépôt",
+    "linkRepo": "Lier un dépôt existant",
+    "repoNameLabel": "Nom du dépôt",
+    "repoNamePlaceholder": "mon-depot",
+    "branchTitle": "Sélectionner la branche de base",
+    "branchDescription": "Choisissez la branche qu'Auto Claude doit utiliser comme base pour les branches de tâches.",
+    "ready": "Azure DevOps est configuré ! Les tâches seront créées à partir de {{branchName}}.",
+    "patRequired": "Le jeton d'accès personnel est requis",
+    "invalidPat": "PAT invalide. Vérifiez votre jeton et réessayez."
+  },
   "worktrees": {
     "title": "Worktrees",
     "description": "Gérez les espaces de travail isolés pour vos tâches Auto Claude",

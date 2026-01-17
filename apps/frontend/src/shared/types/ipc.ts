@@ -141,7 +141,9 @@ import type {
   AzureDevOpsPRReviewProgress,
   AzureDevOpsTeam,
   AzureDevOpsBacklog,
-  AzureDevOpsSavedQuery
+  AzureDevOpsSavedQuery,
+  AzureDevOpsRepoInfo,
+  AzureDevOpsOrganization
 } from './integrations';
 import type { APIProfile, ProfilesFile, TestConnectionResult, DiscoverModelsResult } from './profile';
 
@@ -550,6 +552,16 @@ export interface ElectronAPI {
   onGitLabInvestigationError: (
     callback: (projectId: string, error: string) => void
   ) => () => void;
+
+  // Azure DevOps Auth/Setup operations
+  detectAzureDevOpsRepo: (projectPath: string) => Promise<IPCResult<AzureDevOpsRepoInfo>>;
+  validateAzureDevOpsPat: (pat: string, organization?: string) => Promise<IPCResult<{ valid: boolean; username?: string }>>;
+  listAzureDevOpsOrganizations: (pat: string) => Promise<IPCResult<AzureDevOpsOrganization[]>>;
+  listAzureDevOpsProjectsWithPat: (pat: string, organization: string) => Promise<IPCResult<AzureDevOpsProject[]>>;
+  listAzureDevOpsReposWithPat: (pat: string, organization: string, project: string) => Promise<IPCResult<AzureDevOpsRepository[]>>;
+  createAzureDevOpsRepo: (pat: string, organization: string, project: string, repoName: string) => Promise<IPCResult<{ id: string; name: string; remoteUrl: string }>>;
+  addAzureDevOpsRemote: (projectPath: string, organization: string, project: string, repo: string) => Promise<IPCResult<{ remoteUrl: string }>>;
+  getAzureDevOpsBranches: (organization: string, project: string, repo: string, pat: string) => Promise<IPCResult<string[]>>;
 
   // Azure DevOps integration operations
   getAzureDevOpsProjects: (projectId: string) => Promise<IPCResult<AzureDevOpsProject[]>>;

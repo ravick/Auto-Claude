@@ -1,20 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Github,
   GitBranch,
   Key,
   Loader2,
   CheckCircle2,
-  AlertCircle,
   ChevronRight,
   Sparkles,
   Plus,
   Link,
-  Lock,
-  Globe,
   Building,
-  User
+  FolderGit2
 } from 'lucide-react';
 import { Button } from './ui/button';
 import {
@@ -34,43 +30,64 @@ import {
   SelectTrigger,
   SelectValue
 } from './ui/select';
-import { GitHubOAuthFlow } from './project-settings/GitHubOAuthFlow';
+import { AzureDevOpsPATFlow } from './project-settings/AzureDevOpsPATFlow';
 import { ClaudeOAuthFlow } from './project-settings/ClaudeOAuthFlow';
-import type { Project, ProjectSettings } from '../../shared/types';
+import type { Project } from '../../shared/types';
+import type {
+  AzureDevOpsOrganization,
+  AzureDevOpsProject as ADOProject,
+  AzureDevOpsRepository,
+  AzureDevOpsRepoInfo
+} from '../../shared/types/integrations';
 
-interface GitHubSetupModalProps {
+// Azure DevOps icon (simple representation)
+function AzureDevOpsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M0 8.899L2.91 5.499V17.711L0 14.311V8.899ZM5.072 4.899L16.147 0.031V3.199L7.271 6.199L5.072 4.899ZM21.236 3.271V20.729L5.072 19.101V13.211L16.147 16.801V6.801L5.072 10.801V4.901L21.236 3.271ZM5.072 19.099L21.236 20.729L16.147 23.971L5.072 19.099Z"/>
+    </svg>
+  );
+}
+
+interface AzureDevOpsSetupModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   project: Project;
-  onComplete: (settings: { githubToken: string; githubRepo: string; mainBranch: string; githubAuthMethod?: 'oauth' | 'pat' }) => void;
+  onComplete: (settings: {
+    azureDevOpsPat: string;
+    azureDevOpsOrg: string;
+    azureDevOpsProject: string;
+    azureDevOpsRepo: string;
+    mainBranch: string;
+  }) => void;
   onSkip?: () => void;
   onBack?: () => void; // Optional back button to return to provider selection
 }
 
-type SetupStep = 'github-auth' | 'claude-auth' | 'repo-confirm' | 'repo' | 'branch' | 'complete';
+type SetupStep = 'ado-auth' | 'claude-auth' | 'repo-confirm' | 'repo' | 'branch' | 'complete';
 
 /**
- * Setup Modal - Required setup flow after Auto Claude initialization
+ * Azure DevOps Setup Modal - Required setup flow after Auto Claude initialization
  *
  * Flow:
- * 1. Authenticate with GitHub (via gh CLI OAuth) - for repo operations
+ * 1. Authenticate with Azure DevOps (via PAT) - for repo operations
  * 2. Authenticate with Claude (via claude CLI OAuth) - for AI features
  * 3. Detect/confirm repository
  * 4. Select base branch for tasks (with recommended default)
  */
-export function GitHubSetupModal({
+export function AzureDevOpsSetupModal({
   open,
   onOpenChange,
   project,
   onComplete,
   onSkip,
   onBack
-}: GitHubSetupModalProps) {
+}: AzureDevOpsSetupModalProps) {
   const { t } = useTranslation('dialogs');
-  const [step, setStep] = useState<SetupStep>('github-auth');
-  const [githubToken, setGithubToken] = useState<string | null>(null);
-  const [githubRepo, setGithubRepo] = useState<string | null>(null);
-  const [detectedRepo, setDetectedRepo] = useState<string | null>(null);
+  const [step, setStep] = useState<SetupStep>('ado-auth');
+  const [pat, setPat] = useState<string | null>(null);
+  const [username, setUsername] = useState<string | null>(null);
+  const [detectedRepo, setDetectedRepo] = useState<AzureDevOpsRepoInfo | null>(null);
   const [branches, setBranches] = useState<string[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
   const [recommendedBranch, setRecommendedBranch] = useState<string | null>(null);
@@ -81,144 +98,137 @@ export function GitHubSetupModal({
   // Repo setup state (for when no remote is detected)
   const [repoAction, setRepoAction] = useState<'create' | 'link' | null>(null);
   const [newRepoName, setNewRepoName] = useState('');
-  const [isPrivateRepo, setIsPrivateRepo] = useState(true);
-  const [existingRepoName, setExistingRepoName] = useState('');
   const [isCreatingRepo, setIsCreatingRepo] = useState(false);
 
-  // Organization selection state
-  const [githubUsername, setGithubUsername] = useState<string | null>(null);
-  const [organizations, setOrganizations] = useState<Array<{ login: string; avatarUrl?: string }>>([]);
-  const [selectedOwner, setSelectedOwner] = useState<string | null>(null);
+  // Organization/Project/Repository selection state (3-level hierarchy)
+  const [organizations, setOrganizations] = useState<AzureDevOpsOrganization[]>([]);
+  const [selectedOrg, setSelectedOrg] = useState<string | null>(null);
+  const [projects, setProjects] = useState<ADOProject[]>([]);
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [repositories, setRepositories] = useState<AzureDevOpsRepository[]>([]);
+  const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
   const [isLoadingOrgs, setIsLoadingOrgs] = useState(false);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+  const [isLoadingRepos, setIsLoadingRepos] = useState(false);
 
-  // Reset state and check existing auth when modal opens
+  // Reset state when modal opens
   useEffect(() => {
     if (open) {
-      // Reset all state first
-      setGithubToken(null);
-      setGithubRepo(null);
+      setPat(null);
+      setUsername(null);
       setDetectedRepo(null);
       setBranches([]);
       setSelectedBranch(null);
       setRecommendedBranch(null);
       setError(null);
-      // Reset repo setup state
       setRepoAction(null);
       setNewRepoName(project.name.replace(/[^A-Za-z0-9_.-]/g, '-'));
-      setIsPrivateRepo(true);
-      setExistingRepoName('');
       setIsCreatingRepo(false);
-      // Reset organization state
-      setGithubUsername(null);
       setOrganizations([]);
-      setSelectedOwner(null);
-      setIsLoadingOrgs(false);
-
-      // Check for existing authentication and skip to appropriate step
-      const checkExistingAuth = async () => {
-        try {
-          // Check for existing GitHub token
-          const ghTokenResult = await window.electronAPI.getGitHubToken();
-          const hasGitHubAuth = ghTokenResult.success && ghTokenResult.data?.token;
-
-          // Check for existing Claude authentication
-          const profilesResult = await window.electronAPI.getClaudeProfiles();
-          let hasClaudeAuth = false;
-          if (profilesResult.success && profilesResult.data) {
-            const activeProfile = profilesResult.data.profiles.find(
-              (p) => p.id === profilesResult.data!.activeProfileId
-            );
-            hasClaudeAuth = !!(activeProfile?.oauthToken || (activeProfile?.isDefault && activeProfile?.configDir));
-          }
-
-          // Determine starting step based on existing auth
-          if (hasGitHubAuth && hasClaudeAuth) {
-            // Both authenticated, go directly to repo detection
-            setGithubToken(ghTokenResult.data!.token);
-            // detectRepository will be called and set the step
-            setStep('repo'); // Temporary, detectRepository will update
-            await detectRepository();
-          } else if (hasGitHubAuth) {
-            // Only GitHub authenticated, go to Claude auth
-            setGithubToken(ghTokenResult.data!.token);
-            setStep('claude-auth');
-          } else {
-            // No auth, start from GitHub auth
-            setStep('github-auth');
-          }
-        } catch (err) {
-          console.error('Failed to check existing auth:', err);
-          // On error, start from GitHub auth
-          setStep('github-auth');
-        }
-      };
-
-      checkExistingAuth();
+      setSelectedOrg(null);
+      setProjects([]);
+      setSelectedProject(null);
+      setRepositories([]);
+      setSelectedRepo(null);
+      setStep('ado-auth');
     }
-  }, [open]);
+  }, [open, project.name]);
 
-  // Load user info and organizations
-  const loadUserAndOrgs = async () => {
+  // Load organizations when PAT is validated
+  const loadOrganizations = async (patToken: string) => {
     setIsLoadingOrgs(true);
     try {
-      // Get current user
-      const userResult = await window.electronAPI.getGitHubUser();
-      if (userResult.success && userResult.data) {
-        setGithubUsername(userResult.data.username);
-        setSelectedOwner(userResult.data.username); // Default to personal account
-      }
-
-      // Get organizations
-      const orgsResult = await window.electronAPI.listGitHubOrgs();
-      if (orgsResult.success && orgsResult.data) {
-        setOrganizations(orgsResult.data.orgs);
+      const result = await window.electronAPI.listAzureDevOpsOrganizations(patToken);
+      if (result.success && result.data) {
+        setOrganizations(result.data);
+        if (result.data.length === 1) {
+          // Auto-select if only one org
+          setSelectedOrg(result.data[0].accountName);
+          await loadProjects(patToken, result.data[0].accountName);
+        }
       }
     } catch (err) {
-      console.error('Failed to load user/orgs:', err);
+      console.error('Failed to load organizations:', err);
     } finally {
       setIsLoadingOrgs(false);
     }
   };
 
-  // Detect repository from git remote when auth succeeds
+  // Load projects when organization is selected
+  const loadProjects = async (patToken: string, org: string) => {
+    setIsLoadingProjects(true);
+    setProjects([]);
+    setSelectedProject(null);
+    setRepositories([]);
+    setSelectedRepo(null);
+    try {
+      const result = await window.electronAPI.listAzureDevOpsProjectsWithPat(patToken, org);
+      if (result.success && result.data) {
+        setProjects(result.data);
+      }
+    } catch (err) {
+      console.error('Failed to load projects:', err);
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  };
+
+  // Load repositories when project is selected
+  const loadRepositories = async (patToken: string, org: string, proj: string) => {
+    setIsLoadingRepos(true);
+    setRepositories([]);
+    setSelectedRepo(null);
+    try {
+      const result = await window.electronAPI.listAzureDevOpsReposWithPat(patToken, org, proj);
+      if (result.success && result.data) {
+        setRepositories(result.data);
+      }
+    } catch (err) {
+      console.error('Failed to load repositories:', err);
+    } finally {
+      setIsLoadingRepos(false);
+    }
+  };
+
+  // Detect repository from git remote
   const detectRepository = async () => {
     setIsLoadingRepo(true);
     setError(null);
 
     try {
-      // Try to detect repo from git remote
-      const result = await window.electronAPI.detectGitHubRepo(project.path);
+      const result = await window.electronAPI.detectAzureDevOpsRepo(project.path);
       if (result.success && result.data) {
         setDetectedRepo(result.data);
-        setGithubRepo(result.data);
-        // Go to confirmation step instead of directly to branch
         setStep('repo-confirm');
       } else {
         // No remote detected, load orgs and show repo setup step
-        await loadUserAndOrgs();
+        if (pat) {
+          await loadOrganizations(pat);
+        }
         setStep('repo');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to detect repository');
-      await loadUserAndOrgs();
+      if (pat) {
+        await loadOrganizations(pat);
+      }
       setStep('repo');
     } finally {
       setIsLoadingRepo(false);
     }
   };
 
-  // Load branches from GitHub
-  const loadBranches = async (repo: string) => {
+  // Load branches from Azure DevOps
+  const loadBranches = async (org: string, proj: string, repo: string) => {
+    if (!pat) return;
+
     setIsLoadingBranches(true);
     setError(null);
 
     try {
-      // Get branches from GitHub API
-      const result = await window.electronAPI.getGitHubBranches(repo, githubToken!);
+      const result = await window.electronAPI.getAzureDevOpsBranches(org, proj, repo, pat);
       if (result.success && result.data) {
         setBranches(result.data);
-
-        // Detect recommended branch (main > master > develop > first)
         const recommended = detectRecommendedBranch(result.data);
         setRecommendedBranch(recommended);
         setSelectedBranch(recommended);
@@ -243,49 +253,71 @@ export function GitHubSetupModal({
     return branchList[0] || null;
   };
 
-  // Handle GitHub OAuth success
-  const handleGitHubAuthSuccess = async (token: string) => {
-    setGithubToken(token);
+  // Handle PAT auth success
+  const handleAdoAuthSuccess = async (patToken: string, user?: string) => {
+    setPat(patToken);
+    if (user) setUsername(user);
 
-    // Check if Claude is already authenticated before showing auth step
+    // Check if Claude is already authenticated
     try {
       const profilesResult = await window.electronAPI.getClaudeProfiles();
       if (profilesResult.success && profilesResult.data) {
         const activeProfile = profilesResult.data.profiles.find(
           (p) => p.id === profilesResult.data!.activeProfileId
         );
-        // Check if active profile has authentication (oauthToken or default with configDir)
         if (activeProfile?.oauthToken || (activeProfile?.isDefault && activeProfile?.configDir)) {
-          // Already authenticated, skip Claude auth and go directly to repo detection
           await detectRepository();
           return;
         }
       }
     } catch (err) {
       console.error('Failed to check Claude profiles:', err);
-      // On error, fall through to show Claude auth step
     }
 
-    // Not authenticated, show Claude auth step
     setStep('claude-auth');
   };
 
-  // Handle Claude OAuth success
+  // Handle Claude auth success
   const handleClaudeAuthSuccess = async () => {
-    // Claude token is already saved to active profile by the OAuth flow
-    // Move to repo detection
     await detectRepository();
   };
 
-  // Handle creating a new GitHub repository
-  const handleCreateRepo = async () => {
-    if (!newRepoName.trim()) {
-      setError('Please enter a repository name');
-      return;
+  // Handle confirming detected repository
+  const handleConfirmRepo = async () => {
+    if (detectedRepo && pat) {
+      setStep('branch');
+      await loadBranches(detectedRepo.organization, detectedRepo.project, detectedRepo.repository);
     }
+  };
 
-    if (!selectedOwner) {
-      setError('Please select an owner for the repository');
+  // Handle changing repository
+  const handleChangeRepo = async () => {
+    if (pat) {
+      await loadOrganizations(pat);
+    }
+    setStep('repo');
+  };
+
+  // Handle organization selection
+  const handleOrgChange = async (org: string) => {
+    setSelectedOrg(org);
+    if (pat) {
+      await loadProjects(pat, org);
+    }
+  };
+
+  // Handle project selection
+  const handleProjectChange = async (proj: string) => {
+    setSelectedProject(proj);
+    if (pat && selectedOrg) {
+      await loadRepositories(pat, selectedOrg, proj);
+    }
+  };
+
+  // Handle creating a new repository
+  const handleCreateRepo = async () => {
+    if (!newRepoName.trim() || !pat || !selectedOrg || !selectedProject) {
+      setError('Please fill in all required fields');
       return;
     }
 
@@ -293,18 +325,34 @@ export function GitHubSetupModal({
     setError(null);
 
     try {
-      const result = await window.electronAPI.createGitHubRepo(newRepoName.trim(), {
-        isPrivate: isPrivateRepo,
-        projectPath: project.path,
-        owner: selectedOwner !== githubUsername ? selectedOwner : undefined // Only pass owner if it's an org
-      });
+      const result = await window.electronAPI.createAzureDevOpsRepo(
+        pat,
+        selectedOrg,
+        selectedProject,
+        newRepoName.trim()
+      );
 
       if (result.success && result.data) {
-        // Repo created and remote added automatically by gh CLI
-        setGithubRepo(result.data.fullName);
-        setDetectedRepo(result.data.fullName);
-        setStep('branch');
-        await loadBranches(result.data.fullName);
+        // Add remote to local git repo
+        const remoteResult = await window.electronAPI.addAzureDevOpsRemote(
+          project.path,
+          selectedOrg,
+          selectedProject,
+          result.data.name
+        );
+
+        if (remoteResult.success) {
+          setDetectedRepo({
+            organization: selectedOrg,
+            project: selectedProject,
+            repository: result.data.name,
+            remoteUrl: result.data.remoteUrl
+          });
+          setStep('branch');
+          await loadBranches(selectedOrg, selectedProject, result.data.name);
+        } else {
+          setError(remoteResult.error || 'Failed to add remote');
+        }
       } else {
         setError(result.error || 'Failed to create repository');
       }
@@ -315,30 +363,10 @@ export function GitHubSetupModal({
     }
   };
 
-  // Handle confirming the detected repository
-  const handleConfirmRepo = async () => {
-    if (detectedRepo) {
-      setStep('branch');
-      await loadBranches(detectedRepo);
-    }
-  };
-
-  // Handle changing the repository (go to repo setup)
-  const handleChangeRepo = async () => {
-    await loadUserAndOrgs();
-    setStep('repo');
-  };
-
-  // Handle linking to an existing GitHub repository
+  // Handle linking to existing repository
   const handleLinkRepo = async () => {
-    if (!existingRepoName.trim()) {
-      setError('Please enter a repository name (owner/repo format)');
-      return;
-    }
-
-    // Validate format
-    if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(existingRepoName.trim())) {
-      setError('Invalid format. Use owner/repo (e.g., username/my-project)');
+    if (!selectedRepo || !pat || !selectedOrg || !selectedProject) {
+      setError('Please select a repository');
       return;
     }
 
@@ -346,13 +374,22 @@ export function GitHubSetupModal({
     setError(null);
 
     try {
-      const result = await window.electronAPI.addGitRemote(project.path, existingRepoName.trim());
+      const result = await window.electronAPI.addAzureDevOpsRemote(
+        project.path,
+        selectedOrg,
+        selectedProject,
+        selectedRepo
+      );
 
       if (result.success) {
-        setGithubRepo(existingRepoName.trim());
-        setDetectedRepo(existingRepoName.trim());
+        setDetectedRepo({
+          organization: selectedOrg,
+          project: selectedProject,
+          repository: selectedRepo,
+          remoteUrl: result.data!.remoteUrl
+        });
         setStep('branch');
-        await loadBranches(existingRepoName.trim());
+        await loadBranches(selectedOrg, selectedProject, selectedRepo);
       } else {
         setError(result.error || 'Failed to add remote');
       }
@@ -363,14 +400,15 @@ export function GitHubSetupModal({
     }
   };
 
-  // Handle branch selection complete
+  // Handle completion
   const handleComplete = () => {
-    if (githubToken && githubRepo && selectedBranch) {
+    if (pat && detectedRepo && selectedBranch) {
       onComplete({
-        githubToken,
-        githubRepo,
-        mainBranch: selectedBranch,
-        githubAuthMethod: 'oauth' // Setup modal always uses OAuth flow
+        azureDevOpsPat: pat,
+        azureDevOpsOrg: detectedRepo.organization,
+        azureDevOpsProject: detectedRepo.project,
+        azureDevOpsRepo: detectedRepo.repository,
+        mainBranch: selectedBranch
       });
     }
   };
@@ -378,22 +416,22 @@ export function GitHubSetupModal({
   // Render step content
   const renderStepContent = () => {
     switch (step) {
-      case 'github-auth':
+      case 'ado-auth':
         return (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Github className="h-5 w-5" />
-                {t('githubSetup.connectTitle')}
+                <AzureDevOpsIcon className="h-5 w-5" />
+                {t('azureDevOpsSetup.connectTitle')}
               </DialogTitle>
               <DialogDescription>
-                {t('githubSetup.connectDescription')}
+                {t('azureDevOpsSetup.connectDescription')}
               </DialogDescription>
             </DialogHeader>
 
             <div className="py-4">
-              <GitHubOAuthFlow
-                onSuccess={handleGitHubAuthSuccess}
+              <AzureDevOpsPATFlow
+                onSuccess={handleAdoAuthSuccess}
                 onCancel={onSkip}
               />
             </div>
@@ -427,11 +465,11 @@ export function GitHubSetupModal({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Github className="h-5 w-5" />
-                Confirm Repository
+                <AzureDevOpsIcon className="h-5 w-5" />
+                {t('azureDevOpsSetup.repositoryTitle')}
               </DialogTitle>
               <DialogDescription>
-                We detected a GitHub repository for this project. Please confirm or change it.
+                We detected an Azure DevOps repository for this project. Please confirm or change it.
               </DialogDescription>
             </DialogHeader>
 
@@ -442,15 +480,11 @@ export function GitHubSetupModal({
                   <div>
                     <p className="font-medium">Repository Detected</p>
                     <p className="text-sm text-muted-foreground font-mono">
-                      {detectedRepo}
+                      {detectedRepo?.organization}/{detectedRepo?.project}/{detectedRepo?.repository}
                     </p>
                   </div>
                 </div>
               </div>
-
-              <p className="text-sm text-muted-foreground">
-                {t('githubSetup.repoDescription')}
-              </p>
 
               {error && (
                 <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-3 text-sm text-destructive">
@@ -476,11 +510,11 @@ export function GitHubSetupModal({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Github className="h-5 w-5" />
-                Connect to GitHub
+                <AzureDevOpsIcon className="h-5 w-5" />
+                {t('azureDevOpsSetup.repositoryTitle')}
               </DialogTitle>
               <DialogDescription>
-                Your project needs a GitHub repository. Create a new one or link to an existing repository.
+                Your project needs an Azure DevOps repository. Create a new one or link to an existing repository.
               </DialogDescription>
             </DialogHeader>
 
@@ -491,21 +525,21 @@ export function GitHubSetupModal({
                   <button
                     onClick={() => setRepoAction('create')}
                     className="flex flex-col items-center gap-2 p-4 rounded-lg border-2 border-dashed hover:border-primary hover:bg-primary/5 transition-colors"
-                    aria-label={t('githubSetup.createRepoAriaLabel')}
+                    aria-label={t('azureDevOpsSetup.createRepo')}
                   >
                     <Plus className="h-8 w-8 text-muted-foreground" />
-                    <span className="text-sm font-medium">Create New Repo</span>
+                    <span className="text-sm font-medium">{t('azureDevOpsSetup.createRepo')}</span>
                     <span className="text-xs text-muted-foreground text-center">
-                      Create a new repository on GitHub
+                      Create a new repository in Azure DevOps
                     </span>
                   </button>
                   <button
                     onClick={() => setRepoAction('link')}
                     className="flex flex-col items-center gap-2 p-4 rounded-lg border-2 border-dashed hover:border-primary hover:bg-primary/5 transition-colors"
-                    aria-label={t('githubSetup.linkRepoAriaLabel')}
+                    aria-label={t('azureDevOpsSetup.linkRepo')}
                   >
                     <Link className="h-8 w-8 text-muted-foreground" />
-                    <span className="text-sm font-medium">Link Existing</span>
+                    <span className="text-sm font-medium">{t('azureDevOpsSetup.linkRepo')}</span>
                     <span className="text-xs text-muted-foreground text-center">
                       Connect to an existing repository
                     </span>
@@ -513,158 +547,117 @@ export function GitHubSetupModal({
                 </div>
               )}
 
-              {/* Create new repo form */}
-              {repoAction === 'create' && (
+              {/* Create or Link forms share the same org/project selection */}
+              {repoAction && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <button
                       onClick={() => setRepoAction(null)}
                       className="text-primary hover:underline"
-                      aria-label={t('githubSetup.goBackAriaLabel')}
+                      aria-label="Go back"
                     >
                       ← Back
                     </button>
-                    <span>Create a new repository</span>
+                    <span>
+                      {repoAction === 'create' ? 'Create a new repository' : 'Link to existing repository'}
+                    </span>
                   </div>
 
-                  {/* Owner selection */}
+                  {/* Organization selection */}
                   <div className="space-y-2">
-                    <Label>Owner</Label>
+                    <Label>{t('azureDevOpsSetup.organizationTitle')}</Label>
                     {isLoadingOrgs ? (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Loading accounts...
+                        Loading organizations...
                       </div>
                     ) : (
-                      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t('common:accessibility.repositoryOwnerAriaLabel')}>
-                        {/* Personal account */}
-                        {githubUsername && (
-                          <button
-                            onClick={() => setSelectedOwner(githubUsername)}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-md border ${
-                              selectedOwner === githubUsername
-                                ? 'border-primary bg-primary/10 text-primary'
-                                : 'border-muted hover:border-primary/50'
-                            }`}
-                            disabled={isCreatingRepo}
-                            role="radio"
-                            aria-checked={selectedOwner === githubUsername}
-                            aria-label={t('githubSetup.selectOwnerAriaLabel', { owner: githubUsername })}
-                          >
-                            <User className="h-4 w-4" />
-                            <span className="text-sm">{githubUsername}</span>
-                          </button>
-                        )}
-                        {/* Organizations */}
-                        {organizations.map((org) => (
-                          <button
-                            key={org.login}
-                            onClick={() => setSelectedOwner(org.login)}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-md border ${
-                              selectedOwner === org.login
-                                ? 'border-primary bg-primary/10 text-primary'
-                                : 'border-muted hover:border-primary/50'
-                            }`}
-                            disabled={isCreatingRepo}
-                            role="radio"
-                            aria-checked={selectedOwner === org.login}
-                            aria-label={t('githubSetup.selectOrgAriaLabel', { org: org.login })}
-                          >
-                            <Building className="h-4 w-4" />
-                            <span className="text-sm">{org.login}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {organizations.length > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Select your personal account or an organization
-                      </p>
+                      <Select value={selectedOrg || ''} onValueChange={handleOrgChange}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select organization" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {organizations.map((org) => (
+                            <SelectItem key={org.accountId} value={org.accountName}>
+                              <div className="flex items-center gap-2">
+                                <Building className="h-4 w-4" />
+                                {org.accountName}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     )}
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="repo-name">Repository Name</Label>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">
-                        {selectedOwner || '...'} /
-                      </span>
+                  {/* Project selection */}
+                  {selectedOrg && (
+                    <div className="space-y-2">
+                      <Label>{t('azureDevOpsSetup.projectTitle')}</Label>
+                      {isLoadingProjects ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Loading projects...
+                        </div>
+                      ) : (
+                        <Select value={selectedProject || ''} onValueChange={handleProjectChange}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select project" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {projects.map((proj) => (
+                              <SelectItem key={proj.id} value={proj.name}>
+                                <div className="flex items-center gap-2">
+                                  <FolderGit2 className="h-4 w-4" />
+                                  {proj.name}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Create new repo form */}
+                  {repoAction === 'create' && selectedOrg && selectedProject && (
+                    <div className="space-y-2">
+                      <Label htmlFor="repo-name">{t('azureDevOpsSetup.repoNameLabel')}</Label>
                       <Input
                         id="repo-name"
                         value={newRepoName}
                         onChange={(e) => setNewRepoName(e.target.value)}
-                        placeholder="my-project"
+                        placeholder={t('azureDevOpsSetup.repoNamePlaceholder')}
                         disabled={isCreatingRepo}
-                        className="flex-1"
                       />
                     </div>
-                  </div>
+                  )}
 
-                  <div className="space-y-2">
-                    <Label>Visibility</Label>
-                    <div className="flex gap-2" role="radiogroup" aria-label={t('common:accessibility.repositoryVisibilityAriaLabel')}>
-                      <button
-                        onClick={() => setIsPrivateRepo(true)}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-md border ${
-                          isPrivateRepo
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-muted hover:border-primary/50'
-                        }`}
-                        disabled={isCreatingRepo}
-                        role="radio"
-                        aria-checked={isPrivateRepo}
-                        aria-label={t('githubSetup.selectVisibilityAriaLabel', { visibility: 'private' })}
-                      >
-                        <Lock className="h-4 w-4" />
-                        <span className="text-sm">Private</span>
-                      </button>
-                      <button
-                        onClick={() => setIsPrivateRepo(false)}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-md border ${
-                          !isPrivateRepo
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-muted hover:border-primary/50'
-                        }`}
-                        disabled={isCreatingRepo}
-                        role="radio"
-                        aria-checked={!isPrivateRepo}
-                        aria-label={t('githubSetup.selectVisibilityAriaLabel', { visibility: 'public' })}
-                      >
-                        <Globe className="h-4 w-4" />
-                        <span className="text-sm">Public</span>
-                      </button>
+                  {/* Link existing repo form */}
+                  {repoAction === 'link' && selectedOrg && selectedProject && (
+                    <div className="space-y-2">
+                      <Label>{t('azureDevOpsSetup.repositoryTitle')}</Label>
+                      {isLoadingRepos ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Loading repositories...
+                        </div>
+                      ) : (
+                        <Select value={selectedRepo || ''} onValueChange={setSelectedRepo}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select repository" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {repositories.map((repo) => (
+                              <SelectItem key={repo.id} value={repo.name}>
+                                {repo.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Link existing repo form */}
-              {repoAction === 'link' && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <button
-                      onClick={() => setRepoAction(null)}
-                      className="text-primary hover:underline"
-                      aria-label={t('githubSetup.goBackAriaLabel')}
-                    >
-                      ← Back
-                    </button>
-                    <span>Link to existing repository</span>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="existing-repo">Repository</Label>
-                    <Input
-                      id="existing-repo"
-                      value={existingRepoName}
-                      onChange={(e) => setExistingRepoName(e.target.value)}
-                      placeholder="username/repository"
-                      disabled={isCreatingRepo}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Enter the full repository path (e.g., octocat/hello-world)
-                    </p>
-                  </div>
+                  )}
                 </div>
               )}
 
@@ -682,7 +675,10 @@ export function GitHubSetupModal({
                 </Button>
               )}
               {repoAction === 'create' && (
-                <Button onClick={handleCreateRepo} disabled={isCreatingRepo || !newRepoName.trim()}>
+                <Button
+                  onClick={handleCreateRepo}
+                  disabled={isCreatingRepo || !newRepoName.trim() || !selectedOrg || !selectedProject}
+                >
                   {isCreatingRepo ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -697,7 +693,10 @@ export function GitHubSetupModal({
                 </Button>
               )}
               {repoAction === 'link' && (
-                <Button onClick={handleLinkRepo} disabled={isCreatingRepo || !existingRepoName.trim()}>
+                <Button
+                  onClick={handleLinkRepo}
+                  disabled={isCreatingRepo || !selectedRepo || !selectedOrg || !selectedProject}
+                >
                   {isCreatingRepo ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -733,10 +732,10 @@ export function GitHubSetupModal({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <GitBranch className="h-5 w-5" />
-                Select Base Branch
+                {t('azureDevOpsSetup.branchTitle')}
               </DialogTitle>
               <DialogDescription>
-                Choose which branch Auto Claude should use as the base for creating task branches.
+                {t('azureDevOpsSetup.branchDescription')}
               </DialogDescription>
             </DialogHeader>
 
@@ -744,10 +743,10 @@ export function GitHubSetupModal({
               {/* Show detected repo */}
               {detectedRepo && (
                 <div className="flex items-center gap-2 text-sm">
-                  <Github className="h-4 w-4 text-muted-foreground" />
+                  <AzureDevOpsIcon className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Repository:</span>
                   <code className="px-2 py-0.5 bg-muted rounded font-mono text-xs">
-                    {detectedRepo}
+                    {detectedRepo.organization}/{detectedRepo.project}/{detectedRepo.repository}
                   </code>
                   <CheckCircle2 className="h-4 w-4 text-success" />
                 </div>
@@ -849,8 +848,7 @@ export function GitHubSetupModal({
                 <CheckCircle2 className="h-8 w-8 text-success" />
               </div>
               <p className="text-sm text-muted-foreground text-center">
-                Auto Claude is ready to use! You can now create tasks that will be
-                automatically based on <code className="px-1 bg-muted rounded">{selectedBranch}</code>.
+                {t('azureDevOpsSetup.ready', { branchName: selectedBranch })}
               </p>
             </div>
           </>
@@ -860,19 +858,15 @@ export function GitHubSetupModal({
 
   // Progress indicator
   const renderProgress = () => {
-    const steps: { label: string }[] = [
+    const steps = [
       { label: 'Authenticate' },
       { label: 'Configure' },
     ];
 
-    // Don't show progress on complete step
     if (step === 'complete') return null;
 
-    // Map steps to progress indices
-    // Auth steps (github-auth, claude-auth, repo, repo-confirm) = 0
-    // Config steps (branch) = 1
     const currentIndex =
-      step === 'github-auth' ? 0 :
+      step === 'ado-auth' ? 0 :
       step === 'claude-auth' ? 0 :
       step === 'repo' ? 0 :
       step === 'repo-confirm' ? 0 :

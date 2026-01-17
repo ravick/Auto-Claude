@@ -606,6 +606,20 @@ export interface AzureDevOpsSavedQuery {
   children?: AzureDevOpsSavedQuery[];
 }
 
+// Azure DevOps Auth/Setup Types
+export interface AzureDevOpsRepoInfo {
+  organization: string;
+  project: string;
+  repository: string;
+  remoteUrl: string;
+}
+
+export interface AzureDevOpsOrganization {
+  accountId: string;
+  accountName: string;
+  accountUri: string;
+}
+
 // ============================================
 // Roadmap Integration Types (Canny, etc.)
 // ============================================

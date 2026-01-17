@@ -389,6 +389,47 @@ export const integrationMock = {
   // OAuth device code event listener (for streaming device code during auth)
   onGitHubAuthDeviceCode: () => () => {},
 
+  // Azure DevOps Auth/Setup Operations
+  detectAzureDevOpsRepo: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  validateAzureDevOpsPat: async () => ({
+    success: true,
+    data: { valid: false }
+  }),
+
+  listAzureDevOpsOrganizations: async () => ({
+    success: true,
+    data: []
+  }),
+
+  listAzureDevOpsProjectsWithPat: async () => ({
+    success: true,
+    data: []
+  }),
+
+  listAzureDevOpsReposWithPat: async () => ({
+    success: true,
+    data: []
+  }),
+
+  createAzureDevOpsRepo: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  addAzureDevOpsRemote: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  getAzureDevOpsBranches: async () => ({
+    success: true,
+    data: []
+  }),
+
   // Azure DevOps Integration Operations
   getAzureDevOpsProjects: async () => ({
     success: true,

@@ -14,6 +14,8 @@ import type {
   AzureDevOpsTeam,
   AzureDevOpsBacklog,
   AzureDevOpsSavedQuery,
+  AzureDevOpsRepoInfo,
+  AzureDevOpsOrganization,
   IPCResult
 } from '../../../shared/types';
 import { createIpcListener, invokeIpc, sendIpc, IpcListenerCleanup } from './ipc-utils';
@@ -32,6 +34,16 @@ export interface WorkItemQueryOptions {
  * Azure DevOps Integration API operations
  */
 export interface AzureDevOpsAPI {
+  // Auth/Setup operations
+  detectAzureDevOpsRepo: (projectPath: string) => Promise<IPCResult<AzureDevOpsRepoInfo>>;
+  validateAzureDevOpsPat: (pat: string, organization?: string) => Promise<IPCResult<{ valid: boolean; username?: string }>>;
+  listAzureDevOpsOrganizations: (pat: string) => Promise<IPCResult<AzureDevOpsOrganization[]>>;
+  listAzureDevOpsProjectsWithPat: (pat: string, organization: string) => Promise<IPCResult<AzureDevOpsProject[]>>;
+  listAzureDevOpsReposWithPat: (pat: string, organization: string, project: string) => Promise<IPCResult<AzureDevOpsRepository[]>>;
+  createAzureDevOpsRepo: (pat: string, organization: string, project: string, repoName: string) => Promise<IPCResult<{ id: string; name: string; remoteUrl: string }>>;
+  addAzureDevOpsRemote: (projectPath: string, organization: string, project: string, repo: string) => Promise<IPCResult<{ remoteUrl: string }>>;
+  getAzureDevOpsBranches: (organization: string, project: string, repo: string, pat: string) => Promise<IPCResult<string[]>>;
+
   // Project and repository operations
   getAzureDevOpsProjects: (projectId: string) => Promise<IPCResult<AzureDevOpsProject[]>>;
   getAzureDevOpsRepositories: (projectId: string) => Promise<IPCResult<AzureDevOpsRepository[]>>;
@@ -81,6 +93,31 @@ export interface AzureDevOpsAPI {
  * Creates the Azure DevOps Integration API implementation
  */
 export const createAzureDevOpsAPI = (): AzureDevOpsAPI => ({
+  // Auth/Setup operations
+  detectAzureDevOpsRepo: (projectPath: string): Promise<IPCResult<AzureDevOpsRepoInfo>> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_DETECT_REPO, projectPath),
+
+  validateAzureDevOpsPat: (pat: string, organization?: string): Promise<IPCResult<{ valid: boolean; username?: string }>> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_VALIDATE_PAT, pat, organization),
+
+  listAzureDevOpsOrganizations: (pat: string): Promise<IPCResult<AzureDevOpsOrganization[]>> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_LIST_ORGANIZATIONS, pat),
+
+  listAzureDevOpsProjectsWithPat: (pat: string, organization: string): Promise<IPCResult<AzureDevOpsProject[]>> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_LIST_PROJECTS_WITH_PAT, pat, organization),
+
+  listAzureDevOpsReposWithPat: (pat: string, organization: string, project: string): Promise<IPCResult<AzureDevOpsRepository[]>> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_LIST_REPOS_WITH_PAT, pat, organization, project),
+
+  createAzureDevOpsRepo: (pat: string, organization: string, project: string, repoName: string): Promise<IPCResult<{ id: string; name: string; remoteUrl: string }>> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_CREATE_REPO, pat, organization, project, repoName),
+
+  addAzureDevOpsRemote: (projectPath: string, organization: string, project: string, repo: string): Promise<IPCResult<{ remoteUrl: string }>> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_ADD_REMOTE, projectPath, organization, project, repo),
+
+  getAzureDevOpsBranches: (organization: string, project: string, repo: string, pat: string): Promise<IPCResult<string[]>> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_GET_BRANCHES, organization, project, repo, pat),
+
   // Project and repository operations
   getAzureDevOpsProjects: (projectId: string): Promise<IPCResult<AzureDevOpsProject[]>> =>
     invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_GET_PROJECTS, projectId),

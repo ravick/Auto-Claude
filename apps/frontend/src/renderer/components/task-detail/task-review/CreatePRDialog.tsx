@@ -13,7 +13,9 @@ import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
 import { Checkbox } from '../../ui/checkbox';
-import type { Task, WorktreeStatus, WorktreeCreatePRResult } from '../../../../shared/types';
+import { useProjectStore } from '../../../stores/project-store';
+import { AddRemoteDialog } from './AddRemoteDialog';
+import type { Task, WorktreeStatus, WorktreeCreatePRResult, ProjectEnvConfig } from '../../../../shared/types';
 
 interface CreatePRDialogProps {
   open: boolean;
@@ -35,12 +37,18 @@ export function CreatePRDialog({
   onCreatePR
 }: CreatePRDialogProps) {
   const { t } = useTranslation(['taskReview', 'common']);
+  const projects = useProjectStore((state) => state.projects);
   const [targetBranch, setTargetBranch] = useState('');
   const [prTitle, setPrTitle] = useState('');
   const [isDraft, setIsDraft] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [result, setResult] = useState<WorktreeCreatePRResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showAddRemoteDialog, setShowAddRemoteDialog] = useState(false);
+  const [envConfig, setEnvConfig] = useState<ProjectEnvConfig | null>(null);
+
+  // Get project details
+  const project = projects.find(p => p.id === task.projectId);
 
   // Reset state when dialog opens
   useEffect(() => {
@@ -53,6 +61,17 @@ export function CreatePRDialog({
       setError(null);
     }
   }, [open, worktreeStatus?.baseBranch, task.title]);
+
+  // Load env config when dialog opens (for Azure DevOps settings)
+  useEffect(() => {
+    if (open && task.projectId) {
+      window.electronAPI.getProjectEnv(task.projectId).then((result) => {
+        if (result.success && result.data) {
+          setEnvConfig(result.data);
+        }
+      }).catch(console.error);
+    }
+  }, [open, task.projectId]);
 
   // Frontend validation functions
   const validateBranchName = (branch: string): string | null => {
@@ -100,7 +119,15 @@ export function CreatePRDialog({
         if (prResult.success) {
           setResult(prResult);
         } else {
-          setError(prResult.error || t('taskReview:pr.errors.unknown'));
+          // Check if error is about no git remote configured
+          const errorMsg = prResult.error || '';
+          if (errorMsg.includes('No git remote configured')) {
+            // Show add remote dialog instead of error
+            setIsCreating(false);
+            setShowAddRemoteDialog(true);
+            return;
+          }
+          setError(errorMsg || t('taskReview:pr.errors.unknown'));
         }
       } else {
         setError(t('taskReview:pr.errors.unknown'));
@@ -114,6 +141,13 @@ export function CreatePRDialog({
 
   const handleClose = () => {
     onOpenChange(false);
+  };
+
+  // Handle successful remote addition - retry PR creation
+  const handleRemoteAdded = async () => {
+    setShowAddRemoteDialog(false);
+    // Retry PR creation now that remote is configured
+    await handleCreatePR();
   };
 
   const handleOpenPR = () => {
@@ -269,6 +303,20 @@ export function CreatePRDialog({
           </div>
         )}
       </DialogContent>
+
+      {/* Add Remote Dialog - shown when no git remote is configured */}
+      {project && (
+        <AddRemoteDialog
+          open={showAddRemoteDialog}
+          onOpenChange={setShowAddRemoteDialog}
+          projectPath={project.path}
+          azureDevOpsPat={envConfig?.azureDevOpsPat}
+          azureDevOpsOrg={envConfig?.azureDevOpsOrganization}
+          azureDevOpsProject={envConfig?.azureDevOpsProject}
+          azureDevOpsRepo={envConfig?.azureDevOpsRepository}
+          onSuccess={handleRemoteAdded}
+        />
+      )}
     </Dialog>
   );
 }

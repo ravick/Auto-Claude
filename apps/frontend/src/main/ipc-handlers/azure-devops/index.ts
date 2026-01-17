@@ -13,6 +13,7 @@ import { registerDataSourceHandlers } from './data-source-handlers';
 import { registerInvestigationHandlers } from './investigation-handlers';
 import { registerImportHandlers } from './import-handlers';
 import { registerPRHandlers } from './pr-handlers';
+import { registerAuthHandlers } from './auth-handlers';
 
 // Debug logging helper
 const DEBUG = process.env.DEBUG === 'true' || process.env.NODE_ENV === 'development';
@@ -50,6 +51,9 @@ export function registerAzureDevOpsHandlers(
   // Pull request handlers (list, get, review)
   registerPRHandlers(getMainWindow);
 
+  // Auth/setup handlers (PAT validation, repo detection, etc.)
+  registerAuthHandlers();
+
   debugLog('All Azure DevOps handlers registered');
 }
 
@@ -60,5 +64,6 @@ export {
   registerDataSourceHandlers,
   registerInvestigationHandlers,
   registerImportHandlers,
-  registerPRHandlers
+  registerPRHandlers,
+  registerAuthHandlers
 };
