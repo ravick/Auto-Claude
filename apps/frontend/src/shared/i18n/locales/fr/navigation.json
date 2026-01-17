@@ -32,6 +32,10 @@
   "messages": {
     "initializeToCreateTasks": "Initialisez Auto Claude pour créer des tâches"
   },
+  "sidebar": {
+    "collapse": "Réduire la barre latérale",
+    "expand": "Développer la barre latérale"
+  },
   "claudeCode": {
     "checking": "Vérification de Claude Code...",
     "upToDate": "Claude Code est à jour",

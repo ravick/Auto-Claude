@@ -32,6 +32,10 @@
   "messages": {
     "initializeToCreateTasks": "Initialize Auto Claude to create tasks"
   },
+  "sidebar": {
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar"
+  },
   "claudeCode": {
     "checking": "Checking Claude Code...",
     "upToDate": "Claude Code is up to date",

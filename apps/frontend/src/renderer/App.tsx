@@ -56,7 +56,7 @@ import { RepositorySetupModal } from './components/RepositorySetupModal';
 import { detectGitProvider, type GitProvider } from './lib/git-provider-detection';
 import { useProjectStore, loadProjects, addProject, initializeProject, removeProject } from './stores/project-store';
 import { useTaskStore, loadTasks } from './stores/task-store';
-import { useSettingsStore, loadSettings, loadProfiles } from './stores/settings-store';
+import { useSettingsStore, loadSettings, loadProfiles, saveSettings } from './stores/settings-store';
 import { useClaudeProfileStore } from './stores/claude-profile-store';
 import { useTerminalStore, restoreTerminalSessions } from './stores/terminal-store';
 import { initializeGitHubListeners } from './stores/github';
@@ -362,6 +362,32 @@ export function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeView, openProjectTab]);
+
+  // Global keyboard shortcut: Cmd/Ctrl+B to toggle sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip if in input fields
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+
+      // Cmd/Ctrl+B: Toggle sidebar
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        const currentState = useSettingsStore.getState().settings.sidebarCollapsed ?? false;
+        const newState = !currentState;
+        useSettingsStore.getState().updateSettings({ sidebarCollapsed: newState });
+        saveSettings({ sidebarCollapsed: newState });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Load tasks when project changes
   useEffect(() => {
