@@ -252,8 +252,9 @@ export function AzureDevOpsIntegration({
           <div className="space-y-2">
             <Label className="text-sm font-medium text-foreground">Personal Access Token</Label>
             <p className="text-xs text-muted-foreground">
-              Create a PAT with <code className="px-1 bg-muted rounded">Work Items (Read, Write)</code> and{' '}
-              <code className="px-1 bg-muted rounded">Code (Read)</code> scopes from{' '}
+              Create a PAT with <code className="px-1 bg-muted rounded">Work Items (Read, Write)</code>,{' '}
+              <code className="px-1 bg-muted rounded">Code (Read)</code>, and{' '}
+              <code className="px-1 bg-muted rounded">Project and Team (Read)</code> scopes from{' '}
               <a
                 href={envConfig.azureDevOpsOrganization
                   ? `https://dev.azure.com/${envConfig.azureDevOpsOrganization}/_usersSettings/tokens`
