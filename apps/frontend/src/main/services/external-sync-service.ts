@@ -11,6 +11,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { Project, Task, TaskStatus, TaskMetadata } from '../../shared/types';
+import type { ExecutionPhase } from '../../shared/constants/phase-protocol';
 import type {
   ExternalSyncConfig,
   ExternalSyncResult,
@@ -20,6 +21,24 @@ import { mapStatusToGitHub, mapStatusToADO } from '../../shared/types/sync';
 import { getGitHubConfig, githubFetch, normalizeRepoReference } from '../ipc-handlers/github/utils';
 import { getAzureDevOpsConfig, adoFetch } from '../ipc-handlers/azure-devops/utils';
 import { projectStore } from '../project-store';
+
+/**
+ * Context for sync operations - provides additional information for meaningful comments
+ */
+export interface SyncContext {
+  /** The execution phase that triggered this sync */
+  phase?: ExecutionPhase;
+  /** Progress information (subtasks completed/total, etc.) */
+  progress?: {
+    completedSubtasks?: number;
+    totalSubtasks?: number;
+    currentSubtask?: string;
+  };
+  /** Reason for the status change (e.g., 'task_started', 'phase_complete', 'agent_exit') */
+  reason?: 'task_started' | 'phase_transition' | 'agent_exit_success' | 'agent_exit_failure' | 'manual_update';
+  /** Exit code if agent process exited */
+  exitCode?: number | null;
+}
 
 // Debug logging
 const DEBUG = process.env.DEBUG === 'true' || process.env.NODE_ENV === 'development';
@@ -32,6 +51,73 @@ function debugLog(message: string, data?: unknown): void {
       console.debug(`[ExternalSync] ${message}`);
     }
   }
+}
+
+/**
+ * Generate a meaningful discussion comment based on sync context
+ */
+function generateSyncComment(
+  oldAdoState: string | null,
+  newAdoState: string,
+  context?: SyncContext
+): string {
+  const parts: string[] = [];
+
+  // Add header
+  parts.push('<strong>Auto-Claude Agent Update:</strong>');
+
+  // Add state change info
+  if (oldAdoState && oldAdoState !== newAdoState) {
+    parts.push(`<br/>📊 Status changed from '<em>${oldAdoState}</em>' to '<em>${newAdoState}</em>'`);
+  } else {
+    parts.push(`<br/>📊 Status: '<em>${newAdoState}</em>'`);
+  }
+
+  // Add phase-specific information
+  if (context?.phase) {
+    const phaseDescriptions: Record<string, string> = {
+      idle: 'Task is idle',
+      planning: '📋 Planning phase - AI is analyzing requirements and creating implementation plan',
+      coding: '💻 Coding phase - AI is implementing the solution',
+      qa_review: '🔍 QA Review phase - AI is validating the implementation',
+      qa_fixing: '🔧 QA Fixing phase - AI is addressing issues found during review',
+      complete: '✅ Implementation complete - ready for human review',
+      failed: '❌ Task failed - requires attention',
+    };
+    const phaseDesc = phaseDescriptions[context.phase];
+    if (phaseDesc) {
+      parts.push(`<br/>${phaseDesc}`);
+    }
+  }
+
+  // Add progress information
+  if (context?.progress) {
+    const { completedSubtasks, totalSubtasks, currentSubtask } = context.progress;
+    if (totalSubtasks !== undefined && completedSubtasks !== undefined) {
+      const percentage = totalSubtasks > 0 ? Math.round((completedSubtasks / totalSubtasks) * 100) : 0;
+      parts.push(`<br/>📈 Progress: ${completedSubtasks}/${totalSubtasks} subtasks (${percentage}%)`);
+    }
+    if (currentSubtask) {
+      parts.push(`<br/>🔹 Current: ${currentSubtask}`);
+    }
+  }
+
+  // Add reason-specific information
+  if (context?.reason) {
+    switch (context.reason) {
+      case 'task_started':
+        parts.push('<br/>🚀 Task execution started');
+        break;
+      case 'agent_exit_success':
+        parts.push('<br/>✨ Agent completed successfully - awaiting human review');
+        break;
+      case 'agent_exit_failure':
+        parts.push(`<br/>⚠️ Agent process exited with issues (code: ${context.exitCode ?? 'unknown'}) - needs attention`);
+        break;
+    }
+  }
+
+  return parts.join('');
 }
 
 /**
@@ -238,7 +324,8 @@ async function syncToAzureDevOps(
   task: Task,
   oldStatus: TaskStatus | undefined,
   newStatus: TaskStatus,
-  adoMapping?: ADOStatusMappingConfig
+  adoMapping?: ADOStatusMappingConfig,
+  context?: SyncContext
 ): Promise<ExternalSyncResult> {
   const timestamp = new Date().toISOString();
   const metadata = task.metadata as TaskMetadata;
@@ -279,9 +366,8 @@ async function syncToAzureDevOps(
   }
 
   try {
-    // Build discussion comment
-    const fromState = oldAdoState || 'unknown';
-    const discussionComment = `<strong>Auto-Claude Agent:</strong> Updating status from '<em>${fromState}</em>' to '<em>${adoState}</em>'`;
+    // Build discussion comment - use context-aware generator for meaningful comments
+    const discussionComment = generateSyncComment(oldAdoState, adoState, context);
 
     // Azure DevOps uses JSON Patch format for updates
     const patchDocument = [
@@ -351,12 +437,14 @@ async function syncToAzureDevOps(
  * It should never throw - all errors are logged and returned in the results.
  *
  * @param oldStatus - The previous status before the change (for discussion comments)
+ * @param context - Additional context for generating meaningful sync comments
  */
 export async function syncTaskStatus(
   project: Project,
   task: Task,
   oldStatus: TaskStatus | undefined,
-  newStatus: TaskStatus
+  newStatus: TaskStatus,
+  context?: SyncContext
 ): Promise<ExternalSyncResult[]> {
   const results: ExternalSyncResult[] = [];
 
@@ -408,7 +496,8 @@ export async function syncTaskStatus(
         task,
         oldStatus,
         newStatus,
-        syncConfig.adoStatusMapping
+        syncConfig.adoStatusMapping,
+        context
       );
       results.push(result);
 

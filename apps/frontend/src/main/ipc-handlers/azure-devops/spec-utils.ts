@@ -11,6 +11,101 @@ import { stripHtml } from './utils';
 import { labelMatchesWholeWord } from '../shared/label-utils';
 
 /**
+ * Field mapping configuration for Azure DevOps work item types.
+ * Each work item type can have multiple detail fields that should be included
+ * when importing work items as tasks.
+ */
+export interface ADOFieldMapping {
+  /** Field reference name (e.g., 'Microsoft.VSTS.TCM.ReproSteps') */
+  field: string;
+  /** Display label for the field (e.g., 'Repro Steps') */
+  label: string;
+  /** Whether the field contains HTML content that needs to be stripped */
+  isHtml?: boolean;
+}
+
+/**
+ * Default field mappings per work item type.
+ * These are common fields used in Azure DevOps Agile, Scrum, and Basic process templates.
+ * Users can override these via project configuration.
+ */
+export const DEFAULT_WORK_ITEM_FIELD_MAPPINGS: Record<string, ADOFieldMapping[]> = {
+  // Bug-specific fields
+  Bug: [
+    { field: 'Microsoft.VSTS.TCM.ReproSteps', label: 'Repro Steps', isHtml: true },
+    { field: 'Microsoft.VSTS.TCM.SystemInfo', label: 'System Info', isHtml: true },
+    { field: 'Microsoft.VSTS.Common.AcceptanceCriteria', label: 'Acceptance Criteria', isHtml: true },
+  ],
+  // User Story fields (Agile template)
+  'User Story': [
+    { field: 'Microsoft.VSTS.Common.AcceptanceCriteria', label: 'Acceptance Criteria', isHtml: true },
+  ],
+  // Product Backlog Item fields (Scrum template)
+  'Product Backlog Item': [
+    { field: 'Microsoft.VSTS.Common.AcceptanceCriteria', label: 'Acceptance Criteria', isHtml: true },
+  ],
+  // Feature fields
+  Feature: [
+    { field: 'Microsoft.VSTS.Common.AcceptanceCriteria', label: 'Acceptance Criteria', isHtml: true },
+  ],
+  // Epic fields
+  Epic: [
+    { field: 'Microsoft.VSTS.Common.AcceptanceCriteria', label: 'Acceptance Criteria', isHtml: true },
+  ],
+  // Task - usually just uses Description
+  Task: [],
+  // Issue (Basic template)
+  Issue: [],
+};
+
+/**
+ * Get all fields that should be fetched for a work item based on its type.
+ * Includes both standard fields and type-specific detail fields.
+ */
+export function getFieldsForWorkItemType(workItemType?: string): string[] {
+  // Standard fields that all work items have
+  const standardFields = [
+    'System.Id',
+    'System.Title',
+    'System.Description',
+    'System.State',
+    'System.WorkItemType',
+    'System.Tags',
+    'System.CreatedDate',
+    'System.ChangedDate',
+    'System.IterationPath',
+    'System.AreaPath',
+    'System.CreatedBy',
+    'System.AssignedTo',
+  ];
+
+  // If we know the work item type, add type-specific fields
+  if (workItemType) {
+    const mappings = DEFAULT_WORK_ITEM_FIELD_MAPPINGS[workItemType] || [];
+    const typeSpecificFields = mappings.map(m => m.field);
+    return [...new Set([...standardFields, ...typeSpecificFields])];
+  }
+
+  // If we don't know the type yet, fetch all possible detail fields
+  // This is used for initial fetch before we know the work item type
+  const allDetailFields = new Set<string>();
+  for (const mappings of Object.values(DEFAULT_WORK_ITEM_FIELD_MAPPINGS)) {
+    for (const mapping of mappings) {
+      allDetailFields.add(mapping.field);
+    }
+  }
+
+  return [...new Set([...standardFields, ...allDetailFields])];
+}
+
+/**
+ * Get field mappings for a specific work item type
+ */
+export function getFieldMappingsForType(workItemType: string): ADOFieldMapping[] {
+  return DEFAULT_WORK_ITEM_FIELD_MAPPINGS[workItemType] || [];
+}
+
+/**
  * Simplified task info returned when creating a spec from an Azure DevOps work item.
  * This is not a full Task object - it's just the basic info needed for the UI.
  */
@@ -143,6 +238,14 @@ function sanitizeIsoDate(value: unknown): string {
   return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
 }
 
+/**
+ * Represents a detail field with its label and content
+ */
+interface DetailField {
+  label: string;
+  content: string;
+}
+
 interface SanitizedWorkItem {
   id: number;
   title: string;
@@ -152,9 +255,12 @@ interface SanitizedWorkItem {
   tags: string[];
   assignedTo?: string;
   iteration?: string;
+  areaPath?: string;
   createdDate: string;
   changedDate: string;
   webUrl: string;
+  /** Type-specific detail fields (e.g., Repro Steps for Bugs) */
+  detailFields: DetailField[];
 }
 
 function sanitizeWorkItemForSpec(
@@ -164,6 +270,7 @@ function sanitizeWorkItemForSpec(
   const fields = workItem.fields;
   const id = sanitizeWorkItemId(workItem.id);
   const title = sanitizeText(fields['System.Title'], 200) || `Work Item ${id || 'unknown'}`;
+  const workItemType = sanitizeText(fields['System.WorkItemType'], 50) || 'Task';
 
   // Parse tags (semicolon-separated)
   const tagsStr = fields['System.Tags'] || '';
@@ -172,12 +279,37 @@ function sanitizeWorkItemForSpec(
   // Build web URL
   const webUrl = `https://dev.azure.com/${config.organization}/${config.project}/_workitems/edit/${id}`;
 
+  // Extract type-specific detail fields (e.g., Repro Steps for Bugs, Acceptance Criteria for User Stories)
+  // Note: Fields that don't exist on the work item are safely skipped - the Azure DevOps API
+  // simply omits fields that aren't present, so fields[mapping.field] returns undefined.
+  // This allows us to define mappings for fields that may or may not exist on a given work item.
+  const detailFields: DetailField[] = [];
+  const fieldMappings = getFieldMappingsForType(workItemType);
+
+  for (const mapping of fieldMappings) {
+    const rawValue = fields[mapping.field];
+    // Skip if field doesn't exist, is null, undefined, or empty
+    if (rawValue != null && rawValue !== '') {
+      const content = mapping.isHtml
+        ? sanitizeText(stripHtml(String(rawValue)), 20000, true)
+        : sanitizeText(String(rawValue), 20000, true);
+
+      // Only add if there's actual content after sanitization
+      if (content.trim()) {
+        detailFields.push({
+          label: mapping.label,
+          content,
+        });
+      }
+    }
+  }
+
   return {
     id,
     title,
     description: sanitizeText(stripHtml(fields['System.Description'] || ''), 20000, true),
     state: sanitizeText(fields['System.State'], 50) || 'New',
-    workItemType: sanitizeText(fields['System.WorkItemType'], 50) || 'Task',
+    workItemType,
     tags,
     assignedTo: fields['System.AssignedTo']?.displayName
       ? sanitizeText(fields['System.AssignedTo'].displayName, 100)
@@ -185,9 +317,13 @@ function sanitizeWorkItemForSpec(
     iteration: fields['System.IterationPath']
       ? sanitizeText(fields['System.IterationPath'], 200)
       : undefined,
+    areaPath: fields['System.AreaPath']
+      ? sanitizeText(fields['System.AreaPath'], 200)
+      : undefined,
     createdDate: sanitizeIsoDate(fields['System.CreatedDate']),
     changedDate: sanitizeIsoDate(fields['System.ChangedDate']),
     webUrl,
+    detailFields,
   };
 }
 
@@ -237,10 +373,27 @@ export function buildWorkItemContext(
     lines.push(`**Iteration:** ${safeWorkItem.iteration}`);
   }
 
+  if (safeWorkItem.areaPath) {
+    lines.push(`**Area:** ${safeWorkItem.areaPath}`);
+  }
+
+  // Add Description section
   lines.push('');
   lines.push('## Description');
   lines.push('');
   lines.push(safeWorkItem.description || '_No description provided_');
+
+  // Add type-specific detail fields (e.g., Repro Steps for Bugs, Acceptance Criteria for User Stories)
+  // Note: If no detail fields exist (field not on work item type or empty), this loop is safely skipped
+  for (const detailField of safeWorkItem.detailFields) {
+    lines.push('');
+    lines.push(`## ${detailField.label}`);
+    lines.push('');
+    lines.push(detailField.content);
+  }
+
+  lines.push('');
+  lines.push('---');
   lines.push('');
   lines.push(`**Web URL:** ${safeWorkItem.webUrl}`);
 
@@ -257,6 +410,28 @@ async function pathExists(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Build a full task description including type-specific detail fields
+ */
+function buildFullTaskDescription(safeWorkItem: SanitizedWorkItem): string {
+  const parts: string[] = [];
+
+  // Start with the main description
+  if (safeWorkItem.description) {
+    parts.push(safeWorkItem.description);
+  }
+
+  // Add type-specific detail fields (e.g., Repro Steps for Bugs)
+  // Note: If no detail fields exist (field not on work item type or empty), this loop is safely skipped
+  for (const detailField of safeWorkItem.detailFields) {
+    parts.push('');
+    parts.push(`**${detailField.label}:**`);
+    parts.push(detailField.content);
+  }
+
+  return parts.join('\n').trim() || '_No description provided_';
 }
 
 /**
@@ -309,12 +484,12 @@ export async function createSpecForWorkItem(
         }
       }
 
-      // Return existing task info
+      // Return existing task info with full description including detail fields
       return {
         id: specDirName,
         specId: specDirName,
         title: safeWorkItem.title,
-        description: safeWorkItem.description,
+        description: buildFullTaskDescription(safeWorkItem),
         createdAt,
         updatedAt
       };
@@ -363,12 +538,12 @@ export async function createSpecForWorkItem(
 
     debugLog('Created spec for work item:', { id: safeWorkItem.id, specDir });
 
-    // Return task info
+    // Return task info with full description including detail fields
     return {
       id: specDirName,
       specId: specDirName,
       title: safeWorkItem.title,
-      description: safeWorkItem.description,
+      description: buildFullTaskDescription(safeWorkItem),
       createdAt: new Date(safeWorkItem.createdDate),
       updatedAt: new Date()
     };

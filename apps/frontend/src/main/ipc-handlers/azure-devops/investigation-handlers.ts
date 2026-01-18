@@ -8,7 +8,7 @@ import { IPC_CHANNELS } from '../../../shared/constants';
 import type { AzureDevOpsInvestigationStatus, AzureDevOpsInvestigationResult } from '../../../shared/types/integrations';
 import type { ADOWorkItemResponse } from './types';
 import { getAzureDevOpsConfig, adoFetch, debugLog, getProjectFromStore } from './utils';
-import { buildWorkItemContext, createSpecForWorkItem } from './spec-utils';
+import { buildWorkItemContext, createSpecForWorkItem, getFieldsForWorkItemType } from './spec-utils';
 import type { AgentManager } from '../../agent';
 
 /**
@@ -86,20 +86,10 @@ export function registerInvestigateWorkItem(
           message: 'Fetching work item details...'
         });
 
-        // Fetch work item with all fields
-        const fieldsParam = [
-          'System.Id',
-          'System.Title',
-          'System.Description',
-          'System.State',
-          'System.WorkItemType',
-          'System.Tags',
-          'System.CreatedDate',
-          'System.ChangedDate',
-          'System.IterationPath',
-          'System.CreatedBy',
-          'System.AssignedTo',
-        ].join(',');
+        // Fetch work item with all standard fields plus type-specific fields
+        // (e.g., Repro Steps for Bugs, Acceptance Criteria for User Stories)
+        // We fetch all possible fields since we don't know the work item type upfront
+        const fieldsParam = getFieldsForWorkItemType().join(',');
 
         const workItem = await adoFetch<ADOWorkItemResponse>(
           config,

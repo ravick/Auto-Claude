@@ -26,6 +26,7 @@ import { persistPlanStatusSync, getPlanPath } from "./task/plan-file-utils";
 import { findTaskWorktree } from "../worktree-paths";
 import { findTaskAndProject } from "./task/shared";
 import { safeSendToRenderer } from "./utils";
+import { ExternalSyncService, type SyncContext } from "../services/external-sync-service";
 
 /**
  * Validates status transitions to prevent invalid state changes.
@@ -243,6 +244,21 @@ export function registerAgenteventsHandlers(
               "human_review" as TaskStatus,
               projectId
             );
+
+            // Fire-and-forget: Sync status to external systems
+            const completedCount = task.subtasks.filter(s => s.status === "completed").length;
+            const syncContext: SyncContext = {
+              reason: "agent_exit_success",
+              phase: "complete",
+              exitCode: code,
+              progress: {
+                completedSubtasks: completedCount,
+                totalSubtasks: task.subtasks.length,
+              },
+            };
+            ExternalSyncService.syncTaskStatus(project, task, task.status, "human_review", syncContext).catch(err => {
+              console.warn(`[Task ${taskId}] External sync failed on exit (non-blocking):`, err);
+            });
           } else if (isActiveStatus && !hasSubtasks) {
             // No subtasks yet - task is still in planning phase, don't change status
             // This prevents the bug where tasks jump to human_review before planning completes
@@ -261,6 +277,20 @@ export function registerAgenteventsHandlers(
             "human_review" as TaskStatus,
             projectId
           );
+
+          // Fire-and-forget: Sync status to external systems (task failed)
+          const syncContext: SyncContext = {
+            reason: "agent_exit_failure",
+            phase: "failed",
+            exitCode: code,
+            progress: task.subtasks ? {
+              completedSubtasks: task.subtasks.filter(s => s.status === "completed").length,
+              totalSubtasks: task.subtasks.length,
+            } : undefined,
+          };
+          ExternalSyncService.syncTaskStatus(project, task, task.status, "human_review", syncContext).catch(err => {
+            console.warn(`[Task ${taskId}] External sync failed on exit (non-blocking):`, err);
+          });
         }
       }
     } catch (error) {
@@ -331,6 +361,26 @@ export function registerAgenteventsHandlers(
               persistPlanStatusSync(worktreePlanPath, newStatus, project.id);
             }
           }
+
+          // Fire-and-forget: Sync status to external systems (GitHub, Azure DevOps)
+          // Include progress information for meaningful comments
+          const completedSubtasks = task.subtasks?.filter(s => s.status === "completed").length || 0;
+          const totalSubtasks = task.subtasks?.length || 0;
+          const currentSubtask = task.subtasks?.find(s => s.status === "in_progress")?.title;
+
+          const syncContext: SyncContext = {
+            reason: "phase_transition",
+            phase: progress.phase as ExecutionPhase,
+            progress: {
+              completedSubtasks,
+              totalSubtasks,
+              currentSubtask,
+            },
+          };
+
+          ExternalSyncService.syncTaskStatus(project, task, task.status, newStatus, syncContext).catch(err => {
+            console.warn(`[execution-progress] External sync failed for task ${taskId} (non-blocking):`, err);
+          });
         } catch (err) {
           // Ignore persistence errors - UI will still work, just might flip on refresh
           console.warn("[execution-progress] Could not persist status:", err);

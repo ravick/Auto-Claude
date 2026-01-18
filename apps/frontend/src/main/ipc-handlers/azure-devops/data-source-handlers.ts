@@ -22,6 +22,7 @@ import type {
   ADOWorkItemResponse
 } from './types';
 import { getAzureDevOpsConfig, adoFetch, convertWorkItem, debugLog, getProjectFromStore } from './utils';
+import { getFieldsForWorkItemType } from './spec-utils';
 
 /**
  * Make authenticated request to Azure DevOps API with custom base URL
@@ -253,20 +254,9 @@ export function registerGetBacklogWorkItems(): void {
         debugLog(`Fetching ${workItemIds.length} work items from backlog`);
 
         // Fetch work item details in batch
+        // Include all standard fields plus type-specific fields (e.g., Repro Steps for Bugs)
         const idsParam = workItemIds.join(',');
-        const fieldsParam = [
-          'System.Id',
-          'System.Title',
-          'System.Description',
-          'System.State',
-          'System.WorkItemType',
-          'System.Tags',
-          'System.CreatedDate',
-          'System.ChangedDate',
-          'System.IterationPath',
-          'System.CreatedBy',
-          'System.AssignedTo',
-        ].join(',');
+        const fieldsParam = getFieldsForWorkItemType().join(',');
 
         const workItemsResponse = await adoFetch<{ count: number; value: ADOWorkItemResponse[] }>(
           config,
@@ -391,20 +381,9 @@ export function registerExecuteSavedQuery(): void {
         debugLog(`Fetching ${workItemIds.length} work items from saved query`);
 
         // Fetch work item details in batch
+        // Include all standard fields plus type-specific fields (e.g., Repro Steps for Bugs)
         const idsParam = workItemIds.join(',');
-        const fieldsParam = [
-          'System.Id',
-          'System.Title',
-          'System.Description',
-          'System.State',
-          'System.WorkItemType',
-          'System.Tags',
-          'System.CreatedDate',
-          'System.ChangedDate',
-          'System.IterationPath',
-          'System.CreatedBy',
-          'System.AssignedTo',
-        ].join(',');
+        const fieldsParam = getFieldsForWorkItemType().join(',');
 
         const workItemsResponse = await adoFetch<{ count: number; value: ADOWorkItemResponse[] }>(
           config,

@@ -17,7 +17,7 @@ import {
 } from './plan-file-utils';
 import { findTaskWorktree } from '../../worktree-paths';
 import { projectStore } from '../../project-store';
-import { ExternalSyncService } from '../../services/external-sync-service';
+import { ExternalSyncService, type SyncContext } from '../../services/external-sync-service';
 
 /**
  * Atomic file write to prevent TOCTOU race conditions.
@@ -274,6 +274,7 @@ export function registerTaskExecutionHandlers(
       // Uses shared utility for consistency with agent-events-handlers.ts
       // NOTE: This is now async and non-blocking for better UI responsiveness
       const planPath = path.join(specDir, AUTO_BUILD_PATHS.IMPLEMENTATION_PLAN);
+      const oldStatus = task.status; // Capture for sync
       setImmediate(async () => {
         const persistStart = Date.now();
         try {
@@ -289,6 +290,16 @@ export function registerTaskExecutionHandlers(
         } catch (err) {
           console.error('[TASK_START] Failed to persist plan status:', err);
         }
+
+        // Fire-and-forget: Sync status to external systems (GitHub, Azure DevOps)
+        // This should never block the local update
+        const syncContext: SyncContext = {
+          reason: 'task_started',
+          phase: 'planning',
+        };
+        ExternalSyncService.syncTaskStatus(project, task, oldStatus, 'in_progress', syncContext).catch(err => {
+          console.warn('[TASK_START] External sync failed (non-blocking):', err);
+        });
       });
       // Note: Plan file may not exist yet for new tasks - that's fine (persistPlanStatus handles ENOENT)
     }
@@ -792,7 +803,10 @@ export function registerTaskExecutionHandlers(
         // Fire-and-forget: Sync status to external systems (GitHub, Azure DevOps)
         // This should never block the local update
         // Pass the old status (task.status) for discussion comments
-        ExternalSyncService.syncTaskStatus(project, task, task.status, status).catch(err => {
+        const syncContext: SyncContext = {
+          reason: 'manual_update',
+        };
+        ExternalSyncService.syncTaskStatus(project, task, task.status, status, syncContext).catch(err => {
           console.warn('[TASK_UPDATE_STATUS] External sync failed (non-blocking):', err);
         });
 

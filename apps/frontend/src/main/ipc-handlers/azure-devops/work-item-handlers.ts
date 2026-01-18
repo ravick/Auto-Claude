@@ -9,6 +9,7 @@ import type { IPCResult } from '../../../shared/types';
 import type { AzureDevOpsWorkItem, AzureDevOpsWorkItemsResult } from '../../../shared/types/integrations';
 import type { ADOWorkItemResponse, ADOWiqlQueryResponse } from './types';
 import { getAzureDevOpsConfig, adoFetch, convertWorkItem, debugLog, getProjectFromStore } from './utils';
+import { getFieldsForWorkItemType } from './spec-utils';
 
 // Sort field mapping from user-friendly names to Azure DevOps field names
 const SORT_FIELD_MAP: Record<string, string> = {
@@ -136,21 +137,11 @@ export function registerGetWorkItems(): void {
         debugLog(`Fetching ${paginatedIds.length} work items (page ${page}, fetched ${fetchedCount}, hitLimit: ${hitLimit})`);
 
         // Fetch work item details in batch
+        // Include all standard fields plus type-specific fields (e.g., Repro Steps for Bugs)
         const idsParam = paginatedIds.join(',');
-        const fieldsParam = [
-          'System.Id',
-          'System.Title',
-          'System.Description',
-          'System.State',
-          'System.WorkItemType',
-          'System.Tags',
-          'System.CreatedDate',
-          'System.ChangedDate',
-          'System.IterationPath',
-          'System.CreatedBy',
-          'System.AssignedTo',
-          'Microsoft.VSTS.Common.Priority',
-        ].join(',');
+        const baseFields = getFieldsForWorkItemType();
+        // Also include Priority field for sorting/display
+        const fieldsParam = [...new Set([...baseFields, 'Microsoft.VSTS.Common.Priority'])].join(',');
 
         const workItemsResponse = await adoFetch<{ count: number; value: ADOWorkItemResponse[] }>(
           config,
@@ -201,19 +192,8 @@ export function registerGetWorkItem(): void {
       }
 
       try {
-        const fieldsParam = [
-          'System.Id',
-          'System.Title',
-          'System.Description',
-          'System.State',
-          'System.WorkItemType',
-          'System.Tags',
-          'System.CreatedDate',
-          'System.ChangedDate',
-          'System.IterationPath',
-          'System.CreatedBy',
-          'System.AssignedTo',
-        ].join(',');
+        // Include all standard fields plus type-specific fields (e.g., Repro Steps for Bugs)
+        const fieldsParam = getFieldsForWorkItemType().join(',');
 
         const workItemResponse = await adoFetch<ADOWorkItemResponse>(
           config,

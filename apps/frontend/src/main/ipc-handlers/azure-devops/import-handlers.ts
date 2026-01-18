@@ -9,7 +9,7 @@ import type { IPCResult } from '../../../shared/types';
 import type { AzureDevOpsImportResult } from '../../../shared/types/integrations';
 import type { ADOWorkItemResponse } from './types';
 import { getAzureDevOpsConfig, adoFetch, debugLog, getProjectFromStore } from './utils';
-import { createSpecForWorkItem, AzureDevOpsTaskInfo } from './spec-utils';
+import { createSpecForWorkItem, AzureDevOpsTaskInfo, getFieldsForWorkItemType } from './spec-utils';
 
 /**
  * Import multiple Azure DevOps work items as tasks
@@ -38,24 +38,14 @@ export function registerImportWorkItems(): void {
       let imported = 0;
       let failed = 0;
 
-      // Fields to fetch for work items
-      const fieldsParam = [
-        'System.Id',
-        'System.Title',
-        'System.Description',
-        'System.State',
-        'System.WorkItemType',
-        'System.Tags',
-        'System.CreatedDate',
-        'System.ChangedDate',
-        'System.IterationPath',
-        'System.CreatedBy',
-        'System.AssignedTo',
-      ].join(',');
+      // Get all fields that might be needed (includes type-specific fields like Repro Steps for Bugs)
+      // We fetch all possible fields since we don't know the work item type upfront
+      const fieldsParam = getFieldsForWorkItemType().join(',');
+      debugLog('Fetching work items with fields:', fieldsParam);
 
       for (const workItemId of workItemIds) {
         try {
-          // Fetch the work item
+          // Fetch the work item with all standard and type-specific fields
           const workItem = await adoFetch<ADOWorkItemResponse>(
             config,
             `/workitems/${workItemId}?fields=${fieldsParam}`

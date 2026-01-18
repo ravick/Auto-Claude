@@ -435,7 +435,28 @@ export class ProjectStore {
           }
         }
 
-        // PRIORITY 3: Final fallback to spec.md Overview (AI-synthesized content)
+        // PRIORITY 3: Fallback to TASK.md (used for Azure DevOps work items)
+        // TASK.md contains the raw work item content including Description, Repro Steps, etc.
+        if (!description) {
+          const taskMdPath = path.join(specPath, 'TASK.md');
+          if (existsSync(taskMdPath)) {
+            try {
+              const content = readFileSync(taskMdPath, 'utf-8');
+              // Extract all content sections (Description, Repro Steps, Acceptance Criteria, etc.)
+              // from the ## Description heading to the --- footer separator
+              // The TASK.md format is: metadata header, then ## sections, then "---" footer, then Web URL
+              const sectionMatch = content.match(/## Description[\s\S]*?(?=\n---\n)/);
+              if (sectionMatch) {
+                // Include the full content with all section headers (## Description, ## Repro Steps, etc.)
+                description = sectionMatch[0].trim();
+              }
+            } catch {
+              // Ignore read errors
+            }
+          }
+        }
+
+        // PRIORITY 4: Final fallback to spec.md Overview (AI-synthesized content)
         if (!description && existsSync(specFilePath)) {
           try {
             const content = readFileSync(specFilePath, 'utf-8');
