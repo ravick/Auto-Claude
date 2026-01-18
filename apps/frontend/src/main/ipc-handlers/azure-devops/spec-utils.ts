@@ -11,8 +11,8 @@ import { stripHtml } from './utils';
 import { labelMatchesWholeWord } from '../shared/label-utils';
 import {
   processWorkItemAttachments,
-  replaceAttachmentUrls,
   generateAttachmentsMarkdown,
+  htmlToMarkdownWithImages,
 } from './attachment-utils';
 
 /**
@@ -277,7 +277,8 @@ interface SanitizedWorkItem {
 
 function sanitizeWorkItemForSpec(
   workItem: ADOWorkItemResponse,
-  config: AzureDevOpsConfig
+  config: AzureDevOpsConfig,
+  attachments?: ADOAttachmentInfo[]
 ): SanitizedWorkItem {
   const fields = workItem.fields;
   const id = sanitizeWorkItemId(workItem.id);
@@ -291,6 +292,11 @@ function sanitizeWorkItemForSpec(
   // Build web URL
   const webUrl = `https://dev.azure.com/${config.organization}/${config.project}/_workitems/edit/${id}`;
 
+  // Helper function to convert HTML to text - uses htmlToMarkdownWithImages when
+  // attachments are available to preserve inline image references at their original positions
+  const convertHtml = (html: string) =>
+    attachments?.length ? htmlToMarkdownWithImages(html, attachments) : stripHtml(html);
+
   // Extract type-specific detail fields (e.g., Repro Steps for Bugs, Acceptance Criteria for User Stories)
   // Note: Fields that don't exist on the work item are safely skipped - the Azure DevOps API
   // simply omits fields that aren't present, so fields[mapping.field] returns undefined.
@@ -303,7 +309,7 @@ function sanitizeWorkItemForSpec(
     // Skip if field doesn't exist, is null, undefined, or empty
     if (rawValue != null && rawValue !== '') {
       const content = mapping.isHtml
-        ? sanitizeText(stripHtml(String(rawValue)), 20000, true)
+        ? sanitizeText(convertHtml(String(rawValue)), 20000, true)
         : sanitizeText(String(rawValue), 20000, true);
 
       // Only add if there's actual content after sanitization
@@ -319,7 +325,7 @@ function sanitizeWorkItemForSpec(
   return {
     id,
     title,
-    description: sanitizeText(stripHtml(fields['System.Description'] || ''), 20000, true),
+    description: sanitizeText(convertHtml(fields['System.Description'] || ''), 20000, true),
     state: sanitizeText(fields['System.State'], 50) || 'New',
     workItemType,
     tags,
@@ -374,7 +380,9 @@ export function buildWorkItemContext(
   attachments?: ADOAttachmentInfo[]
 ): string {
   const lines: string[] = [];
-  const safeWorkItem = sanitizeWorkItemForSpec(workItem, config);
+  // Pass attachments to sanitizeWorkItemForSpec so inline images are converted
+  // to markdown references at their original positions in the text
+  const safeWorkItem = sanitizeWorkItemForSpec(workItem, config, attachments);
 
   lines.push(`# Azure DevOps Work Item #${safeWorkItem.id}: ${safeWorkItem.title}`);
   lines.push('');
@@ -401,27 +409,20 @@ export function buildWorkItemContext(
   }
 
   // Add Description section
-  // If we have attachments, replace ADO URLs with local paths
+  // Note: Inline image references are already converted to markdown by sanitizeWorkItemForSpec()
   lines.push('');
   lines.push('## Description');
   lines.push('');
-  let description = safeWorkItem.description || '_No description provided_';
-  if (attachments && attachments.length > 0) {
-    description = replaceAttachmentUrls(description, attachments);
-  }
-  lines.push(description);
+  lines.push(safeWorkItem.description || '_No description provided_');
 
   // Add type-specific detail fields (e.g., Repro Steps for Bugs, Acceptance Criteria for User Stories)
   // Note: If no detail fields exist (field not on work item type or empty), this loop is safely skipped
+  // Inline image references are already converted to markdown by sanitizeWorkItemForSpec()
   for (const detailField of safeWorkItem.detailFields) {
     lines.push('');
     lines.push(`## ${detailField.label}`);
     lines.push('');
-    let content = detailField.content;
-    if (attachments && attachments.length > 0) {
-      content = replaceAttachmentUrls(content, attachments);
-    }
-    lines.push(content);
+    lines.push(detailField.content);
   }
 
   // Add attachments table if we have any
@@ -551,6 +552,12 @@ export async function createSpecForWorkItem(
     const taskContent = buildWorkItemContext(workItem, config, attachments);
     await writeFile(path.join(specDir, 'TASK.md'), taskContent, 'utf-8');
 
+    // Re-sanitize work item with attachments so inline images are converted to markdown
+    // This is needed because the initial sanitization (for validation) was done without attachments
+    const safeWorkItemWithAttachments = attachments.length > 0
+      ? sanitizeWorkItemForSpec(workItem, config, attachments)
+      : safeWorkItem;
+
     // Create metadata.json (Azure DevOps-specific data)
     const metadata = {
       source: 'azure_devops',
@@ -589,29 +596,22 @@ export async function createSpecForWorkItem(
 
     // Create requirements.json with full description (including attachments)
     // This ensures the UI displays all content including attachments table
+    // Note: safeWorkItemWithAttachments already has inline images converted to markdown
     const fullDescriptionParts: string[] = [];
-    if (safeWorkItem.description) {
-      let desc = safeWorkItem.description;
-      if (attachments.length > 0) {
-        desc = replaceAttachmentUrls(desc, attachments);
-      }
-      fullDescriptionParts.push(desc);
+    if (safeWorkItemWithAttachments.description) {
+      fullDescriptionParts.push(safeWorkItemWithAttachments.description);
     }
-    for (const detailField of safeWorkItem.detailFields) {
+    for (const detailField of safeWorkItemWithAttachments.detailFields) {
       fullDescriptionParts.push('');
       fullDescriptionParts.push(`**${detailField.label}:**`);
-      let content = detailField.content;
-      if (attachments.length > 0) {
-        content = replaceAttachmentUrls(content, attachments);
-      }
-      fullDescriptionParts.push(content);
+      fullDescriptionParts.push(detailField.content);
     }
     if (attachments.length > 0) {
       fullDescriptionParts.push(generateAttachmentsMarkdown(attachments));
     }
     const requirements = {
-      title: safeWorkItem.title,
-      task_description: fullDescriptionParts.join('\n') || safeWorkItem.description || '',
+      title: safeWorkItemWithAttachments.title,
+      task_description: fullDescriptionParts.join('\n') || safeWorkItemWithAttachments.description || '',
     };
     await writeFile(
       path.join(specDir, 'requirements.json'),
@@ -621,13 +621,13 @@ export async function createSpecForWorkItem(
 
     debugLog('Created spec for work item:', { id: safeWorkItem.id, specDir });
 
-    // Return task info with full description including detail fields
+    // Return task info with full description including detail fields and inline image references
     return {
       id: specDirName,
       specId: specDirName,
-      title: safeWorkItem.title,
-      description: buildFullTaskDescription(safeWorkItem),
-      createdAt: new Date(safeWorkItem.createdDate),
+      title: safeWorkItemWithAttachments.title,
+      description: buildFullTaskDescription(safeWorkItemWithAttachments),
+      createdAt: new Date(safeWorkItemWithAttachments.createdDate),
       updatedAt: new Date()
     };
   } catch (error) {

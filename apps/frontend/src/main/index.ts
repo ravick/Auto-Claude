@@ -25,7 +25,7 @@ for (const envPath of possibleEnvPaths) {
   }
 }
 
-import { app, BrowserWindow, shell, nativeImage, session, screen } from 'electron';
+import { app, BrowserWindow, shell, nativeImage, session, screen, protocol } from 'electron';
 import { join } from 'path';
 import { accessSync, readFileSync, writeFileSync, rmSync } from 'fs';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
@@ -232,6 +232,22 @@ if (process.platform === 'win32') {
   console.log('[main] Applied Windows GPU cache fixes');
 }
 
+// Register custom protocol for serving local attachment files
+// This allows the renderer to securely load images from spec directories
+// Must be registered before app is ready
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'local-file',
+    privileges: {
+      secure: true,
+      standard: true,
+      supportFetchAPI: true,
+      bypassCSP: true,
+      stream: true
+    }
+  }
+]);
+
 // Initialize the application
 app.whenReady().then(() => {
   // Set app user model id for Windows
@@ -243,6 +259,74 @@ app.whenReady().then(() => {
       .then(() => console.log('[main] Cleared cache on startup'))
       .catch((err) => console.warn('[main] Failed to clear cache:', err));
   }
+
+  // Register the local-file protocol handler
+  // This serves files from local filesystem securely for attachment images
+  protocol.handle('local-file', async (request) => {
+    // Extract the file path from the URL
+    // URL format: local-file:///absolute/path/to/file.png
+    // Note: URL parser interprets local-file:///Users/path as host="Users" pathname="/path"
+    // So we need to reconstruct the full path from host + pathname
+    const url = new URL(request.url);
+    const host = url.host ? decodeURIComponent(url.host) : '';
+    const pathname = decodeURIComponent(url.pathname);
+
+    // Reconstruct the full file path
+    // On Unix: host="Users" pathname="/ravick/..." -> "/Users/ravick/..."
+    // On Windows: host="C:" pathname="/path/..." -> "C:/path/..."
+    let filePath: string;
+    if (host) {
+      if (process.platform === 'win32' && host.length === 2 && host[1] === ':') {
+        // Windows drive letter (e.g., "C:")
+        filePath = host + pathname;
+      } else {
+        // Unix path where first component was parsed as host
+        filePath = '/' + host + pathname;
+      }
+    } else {
+      filePath = pathname;
+    }
+
+    console.log('[local-file protocol] Serving file:', filePath);
+
+    // Security: Only allow serving files from .auto-claude directories
+    // This prevents serving arbitrary files from the filesystem
+    if (!filePath.includes('.auto-claude') && !filePath.includes('auto-claude')) {
+      console.warn('[local-file protocol] Blocked request for file outside auto-claude directory:', filePath);
+      return new Response('Forbidden', { status: 403 });
+    }
+
+    // Read the file directly and return as Response
+    try {
+      const fileBuffer = readFileSync(filePath);
+
+      // Determine content type from extension
+      const ext = filePath.split('.').pop()?.toLowerCase() || '';
+      const contentTypes: Record<string, string> = {
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
+        'svg': 'image/svg+xml',
+        'bmp': 'image/bmp',
+        'ico': 'image/x-icon',
+        'pdf': 'application/pdf',
+      };
+      const contentType = contentTypes[ext] || 'application/octet-stream';
+
+      return new Response(fileBuffer, {
+        status: 200,
+        headers: {
+          'Content-Type': contentType,
+          'Content-Length': String(fileBuffer.length),
+        },
+      });
+    } catch (error) {
+      console.error('[local-file protocol] Error reading file:', filePath, error);
+      return new Response('File not found', { status: 404 });
+    }
+  });
 
   // Clean up stale update metadata from the old source updater system
   // This prevents version display desync after electron-updater installs a new version

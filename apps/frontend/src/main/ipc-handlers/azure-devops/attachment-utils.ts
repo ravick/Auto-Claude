@@ -603,6 +603,73 @@ export function replaceAttachmentUrls(
 }
 
 /**
+ * Convert HTML to text while preserving inline image references as markdown.
+ * This function converts <img> tags to markdown image syntax BEFORE stripping
+ * other HTML tags, ensuring inline image positions are preserved.
+ *
+ * Must be called AFTER attachments are downloaded so we have the local paths.
+ *
+ * @param html - The HTML content from Azure DevOps
+ * @param attachments - Downloaded attachments with URL → local path mapping
+ * @returns Plain text with markdown image references at their original positions
+ */
+export function htmlToMarkdownWithImages(
+  html: string,
+  attachments: ADOAttachmentInfo[]
+): string {
+  if (!html) return '';
+
+  // Build URL → attachment mapping for quick lookup
+  const urlToAttachment = new Map<string, ADOAttachmentInfo>();
+  for (const att of attachments) {
+    urlToAttachment.set(att.originalUrl, att);
+  }
+
+  let result = html;
+
+  // Replace <img> tags with markdown image syntax
+  // Match various img tag formats:
+  // - <img src="url">
+  // - <img src="url" />
+  // - <img src="url" alt="text" width="100" />
+  result = result.replace(
+    /<img[^>]+src\s*=\s*["']([^"']+)["'][^>]*\/?>/gi,
+    (match, src) => {
+      const attachment = urlToAttachment.get(src);
+      if (attachment) {
+        // Use markdown image syntax: ![filename](path)
+        return `\n\n![${attachment.filename}](${attachment.localPath})\n\n`;
+      }
+      // Unknown image URL - leave a placeholder for manual resolution
+      return `\n\n[image: ${src}]\n\n`;
+    }
+  );
+
+  // Now strip remaining HTML tags
+  result = result.replace(/<[^>]+>/g, '');
+
+  // Decode HTML entities
+  result = result
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, '/')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&mdash;/g, '—')
+    .replace(/&ndash;/g, '–');
+
+  // Normalize whitespace but preserve intentional newlines around images
+  result = result.replace(/[ \t]+/g, ' '); // Collapse horizontal whitespace only
+  result = result.replace(/\n{3,}/g, '\n\n'); // Max 2 consecutive newlines
+  result = result.trim();
+
+  return result;
+}
+
+/**
  * Generate markdown for attachments table
  */
 export function generateAttachmentsMarkdown(attachments: ADOAttachmentInfo[]): string {

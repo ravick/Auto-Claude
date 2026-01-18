@@ -8,7 +8,7 @@ import { IPC_CHANNELS } from '../../../shared/constants';
 import type { AzureDevOpsInvestigationStatus, AzureDevOpsInvestigationResult } from '../../../shared/types/integrations';
 import type { ADOWorkItemResponse } from './types';
 import { getAzureDevOpsConfig, adoFetch, debugLog, getProjectFromStore } from './utils';
-import { buildWorkItemContext, createSpecForWorkItem, getFieldsForWorkItemType } from './spec-utils';
+import { buildWorkItemContext, createSpecForWorkItem } from './spec-utils';
 import type { AgentManager } from '../../agent';
 
 /**
@@ -86,15 +86,12 @@ export function registerInvestigateWorkItem(
           message: 'Fetching work item details...'
         });
 
-        // Fetch work item with all standard fields plus type-specific fields
-        // (e.g., Repro Steps for Bugs, Acceptance Criteria for User Stories)
-        // We fetch all possible fields since we don't know the work item type upfront
-        // Include $expand=relations to get attachments
-        const fieldsParam = getFieldsForWorkItemType().join(',');
-
+        // Fetch work item with relations expanded to get attachments
+        // Note: Azure DevOps API doesn't allow combining 'fields' with '$expand=relations'
+        // When using $expand, all fields are returned automatically
         const workItem = await adoFetch<ADOWorkItemResponse>(
           config,
-          `/workitems/${workItemId}?fields=${fieldsParam}&$expand=relations`
+          `/workitems/${workItemId}?$expand=relations`
         );
 
         // Phase 2: Analyzing

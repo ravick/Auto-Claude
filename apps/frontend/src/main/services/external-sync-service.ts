@@ -24,8 +24,8 @@ import { projectStore } from '../project-store';
 import type { ADOAttachmentInfo, ADOWorkItemRelation } from '../ipc-handlers/azure-devops/types';
 import {
   processWorkItemAttachments,
-  replaceAttachmentUrls,
   generateAttachmentsMarkdown,
+  htmlToMarkdownWithImages,
 } from '../ipc-handlers/azure-devops/attachment-utils';
 
 /**
@@ -1017,16 +1017,15 @@ export async function syncFromADO(taskId: string): Promise<{ success: boolean; e
       // Continue with sync - attachments are not critical
     }
 
-    // Strip HTML and replace attachment URLs with local paths
-    let description = stripHtml(fields['System.Description'] || '');
-    let reproSteps = stripHtml(fields['Microsoft.VSTS.TCM.ReproSteps'] || '');
-    let acceptanceCriteria = stripHtml(fields['Microsoft.VSTS.Common.AcceptanceCriteria'] || '');
+    // Convert HTML to text while preserving inline image references as markdown
+    // Use htmlToMarkdownWithImages when attachments are available to keep inline images
+    // at their original positions in the text
+    const convertHtml = (html: string) =>
+      allAttachments.length > 0 ? htmlToMarkdownWithImages(html, allAttachments) : stripHtml(html);
 
-    if (allAttachments.length > 0) {
-      description = replaceAttachmentUrls(description, allAttachments);
-      reproSteps = replaceAttachmentUrls(reproSteps, allAttachments);
-      acceptanceCriteria = replaceAttachmentUrls(acceptanceCriteria, allAttachments);
-    }
+    const description = convertHtml(fields['System.Description'] || '');
+    const reproSteps = convertHtml(fields['Microsoft.VSTS.TCM.ReproSteps'] || '');
+    const acceptanceCriteria = convertHtml(fields['Microsoft.VSTS.Common.AcceptanceCriteria'] || '');
 
     // Build the TASK.md content in the standard format
     const sections: string[] = [];

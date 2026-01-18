@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Target,
   Bug,
@@ -47,6 +47,97 @@ const CategoryIcon: Record<TaskCategory, typeof Target> = {
   testing: FileCode
 };
 
+/**
+ * Component for rendering attachment images with proper error handling.
+ * Uses React state to track loading/error states to avoid DOM manipulation issues.
+ */
+function AttachmentImage({
+  src,
+  alt,
+  specsPath,
+  onOpenPath
+}: {
+  src: string;
+  alt: string;
+  specsPath?: string;
+  onOpenPath?: (path: string) => void;
+}) {
+  const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Build the resolved source URL
+  let resolvedSrc = src;
+  const isAttachment = src?.startsWith('attachments/');
+
+  if (isAttachment && specsPath) {
+    const absolutePath = `${specsPath}/${src}`.replace(/\\/g, '/');
+    resolvedSrc = `local-file://${absolutePath}`;
+    console.log('[AttachmentImage] Resolved path:', { src, specsPath, resolvedSrc });
+  }
+
+  // If no specsPath for attachment, show placeholder immediately
+  if (isAttachment && !specsPath) {
+    console.warn('[AttachmentImage] No specsPath for attachment:', src);
+    return (
+      <span
+        className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded inline-block my-2 cursor-pointer hover:bg-muted"
+        title={`Attachment: ${src}`}
+      >
+        [Image: {alt || src}]
+      </span>
+    );
+  }
+
+  // Show placeholder if image failed to load
+  if (hasError) {
+    return (
+      <span
+        className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded inline-block my-2 cursor-pointer hover:bg-muted"
+        onClick={() => {
+          if (isAttachment && specsPath && onOpenPath) {
+            const absolutePath = `${specsPath}/${src}`.replace(/\\/g, '/');
+            onOpenPath(absolutePath);
+          }
+        }}
+        title={`Click to open: ${alt || src}`}
+      >
+        [Image: {alt || src}]
+      </span>
+    );
+  }
+
+  return (
+    <>
+      {isLoading && (
+        <span className="text-xs text-muted-foreground bg-muted/30 px-2 py-1 rounded inline-block my-2 animate-pulse">
+          Loading image...
+        </span>
+      )}
+      <img
+        src={resolvedSrc}
+        alt={alt || ''}
+        className={cn(
+          'max-w-full h-auto rounded-md border border-border/50 my-2 cursor-pointer hover:opacity-90',
+          isLoading && 'hidden'
+        )}
+        style={{ maxHeight: '400px', objectFit: 'contain' }}
+        onLoad={() => setIsLoading(false)}
+        onError={() => {
+          console.error('[AttachmentImage] Failed to load:', resolvedSrc);
+          setHasError(true);
+          setIsLoading(false);
+        }}
+        onClick={() => {
+          if (isAttachment && specsPath && onOpenPath) {
+            const absolutePath = `${specsPath}/${src}`.replace(/\\/g, '/');
+            onOpenPath(absolutePath);
+          }
+        }}
+      />
+    </>
+  );
+}
+
 interface TaskMetadataProps {
   task: Task;
 }
@@ -82,7 +173,7 @@ export function TaskMetadata({ task }: TaskMetadataProps) {
     }
   }, [task.specsPath]);
 
-  // Custom markdown components for proper link handling
+  // Custom markdown components for proper link and image handling
   const markdownComponents: Components = {
     a: ({ href, children }) => {
       const isAttachment = href?.startsWith('attachments/');
@@ -108,6 +199,15 @@ export function TaskMetadata({ task }: TaskMetadataProps) {
         </button>
       );
     },
+    // Custom img component using AttachmentImage for proper React state management
+    img: ({ src, alt }) => (
+      <AttachmentImage
+        src={src || ''}
+        alt={alt || ''}
+        specsPath={task.specsPath}
+        onOpenPath={(path) => window.electronAPI?.openPath(path)}
+      />
+    ),
   };
 
   return (
