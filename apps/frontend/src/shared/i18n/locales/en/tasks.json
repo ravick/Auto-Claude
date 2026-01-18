@@ -124,7 +124,9 @@
     "errorLoadingContent": "Failed to load file content",
     "retry": "Retry",
     "selectFile": "Select a file to view its contents",
-    "openInIDE": "Open in IDE"
+    "openInIDE": "Open in IDE",
+    "imageOpenedExternally": "Image opened in system viewer",
+    "openAgain": "Open Again"
   },
   "metadata": {
     "severity": "severity",

@@ -587,6 +587,38 @@ export async function createSpecForWorkItem(
       'utf-8'
     );
 
+    // Create requirements.json with full description (including attachments)
+    // This ensures the UI displays all content including attachments table
+    const fullDescriptionParts: string[] = [];
+    if (safeWorkItem.description) {
+      let desc = safeWorkItem.description;
+      if (attachments.length > 0) {
+        desc = replaceAttachmentUrls(desc, attachments);
+      }
+      fullDescriptionParts.push(desc);
+    }
+    for (const detailField of safeWorkItem.detailFields) {
+      fullDescriptionParts.push('');
+      fullDescriptionParts.push(`**${detailField.label}:**`);
+      let content = detailField.content;
+      if (attachments.length > 0) {
+        content = replaceAttachmentUrls(content, attachments);
+      }
+      fullDescriptionParts.push(content);
+    }
+    if (attachments.length > 0) {
+      fullDescriptionParts.push(generateAttachmentsMarkdown(attachments));
+    }
+    const requirements = {
+      title: safeWorkItem.title,
+      task_description: fullDescriptionParts.join('\n') || safeWorkItem.description || '',
+    };
+    await writeFile(
+      path.join(specDir, 'requirements.json'),
+      JSON.stringify(requirements, null, 2),
+      'utf-8'
+    );
+
     debugLog('Created spec for work item:', { id: safeWorkItem.id, specDir });
 
     // Return task info with full description including detail fields

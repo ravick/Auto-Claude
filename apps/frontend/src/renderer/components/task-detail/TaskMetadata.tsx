@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { useCallback } from 'react';
 import {
   Target,
   Bug,
@@ -15,7 +16,7 @@ import {
   Clock,
   ExternalLink
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Badge } from '../ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
@@ -60,6 +61,54 @@ export function TaskMetadata({ task }: TaskMetadataProps) {
     task.metadata.securitySeverity ||
     task.metadata.sourceType
   );
+
+  // Handle clicking on attachment links - open files in system viewer
+  const handleAttachmentClick = useCallback(async (href: string) => {
+    if (!href) return;
+
+    // Check if this is a relative attachment link
+    if (href.startsWith('attachments/') && task.specsPath) {
+      // Build absolute file path (handle both / and \ path separators)
+      const absolutePath = `${task.specsPath}/${href}`.replace(/\\/g, '/');
+      // Open with system default application
+      try {
+        await window.electronAPI?.openPath(absolutePath);
+      } catch (err) {
+        console.error('Failed to open attachment:', err);
+      }
+    } else if (href.startsWith('http://') || href.startsWith('https://')) {
+      // External URL - open in browser
+      window.electronAPI?.openExternal?.(href);
+    }
+  }, [task.specsPath]);
+
+  // Custom markdown components for proper link handling
+  const markdownComponents: Components = {
+    a: ({ href, children }) => {
+      const isAttachment = href?.startsWith('attachments/');
+      const isExternal = href?.startsWith('http://') || href?.startsWith('https://');
+
+      return (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (href) handleAttachmentClick(href);
+          }}
+          className={cn(
+            'inline-flex items-center gap-1 text-info hover:text-info/80 hover:underline cursor-pointer',
+            'bg-transparent border-none p-0 font-inherit text-inherit',
+            isAttachment && 'font-medium'
+          )}
+          title={isAttachment ? `Open attachment: ${href}` : href}
+        >
+          {children}
+          {isExternal && <ExternalLink className="h-3 w-3 inline-block ml-0.5" />}
+        </button>
+      );
+    },
+  };
 
   return (
     <div className="space-y-5">
@@ -144,10 +193,10 @@ export function TaskMetadata({ task }: TaskMetadataProps) {
       {task.description && (
         <div className="bg-muted/30 rounded-lg px-4 py-3 border border-border/50 overflow-hidden max-w-full">
           <div
-            className="prose prose-sm prose-invert max-w-none overflow-hidden prose-p:text-foreground/90 prose-p:leading-relaxed prose-headings:text-foreground prose-strong:text-foreground prose-li:text-foreground/90 prose-ul:my-2 prose-li:my-0.5 prose-a:break-all prose-pre:overflow-x-auto prose-img:max-w-full [&_img]:!max-w-full [&_img]:h-auto [&_code]:break-all [&_code]:whitespace-pre-wrap [&_*]:max-w-full"
+            className="prose prose-sm prose-invert max-w-none overflow-hidden prose-p:text-foreground/90 prose-p:leading-relaxed prose-headings:text-foreground prose-strong:text-foreground prose-li:text-foreground/90 prose-ul:my-2 prose-li:my-0.5 prose-pre:overflow-x-auto prose-img:max-w-full [&_img]:!max-w-full [&_img]:h-auto [&_code]:break-all [&_code]:whitespace-pre-wrap [&_*]:max-w-full prose-td:text-foreground/80 prose-th:text-foreground"
             style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
           >
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
               {task.description}
             </ReactMarkdown>
           </div>

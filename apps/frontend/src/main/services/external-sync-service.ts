@@ -1091,7 +1091,7 @@ export async function syncFromADO(taskId: string): Promise<{ success: boolean; e
       }
     }
 
-    // Build full task description from ADO fields
+    // Build full task description from ADO fields (including attachments)
     const fullDescription: string[] = [];
     if (description) {
       fullDescription.push(description);
@@ -1105,6 +1105,10 @@ export async function syncFromADO(taskId: string): Promise<{ success: boolean; e
       fullDescription.push('');
       fullDescription.push('**Acceptance Criteria:**');
       fullDescription.push(acceptanceCriteria);
+    }
+    // Include attachments in the description so they appear in the UI
+    if (allAttachments.length > 0) {
+      fullDescription.push(generateAttachmentsMarkdown(allAttachments));
     }
 
     requirements.task_description = fullDescription.join('\n') || description;
