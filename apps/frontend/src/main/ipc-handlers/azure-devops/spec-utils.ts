@@ -350,6 +350,7 @@ export async function createSpecForWorkItem(
       sourceType: 'azure_devops' as const,
       azureDevOpsWorkItemId: safeWorkItem.id,
       azureDevOpsUrl: safeWorkItem.webUrl,
+      azureDevOpsWorkItemType: safeWorkItem.workItemType,  // Store work item type for status mapping
       category: determineCategoryFromWorkItem(safeWorkItem.workItemType, safeWorkItem.tags),
       // Store baseBranch for worktree creation and QA comparison
       ...(baseBranch && { baseBranch })

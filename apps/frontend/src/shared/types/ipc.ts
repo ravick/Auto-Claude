@@ -594,6 +594,20 @@ export interface ElectronAPI {
   runAzureDevOpsPRReview: (projectId: string, pullRequestId: number) => void;
   postAzureDevOpsPRComment: (projectId: string, pullRequestId: number, content: string, filePath?: string, line?: number) => Promise<IPCResult<boolean>>;
 
+  // Azure DevOps Work Item Sync operations (for external status sync)
+  updateAzureDevOpsWorkItemState: (
+    projectId: string,
+    workItemId: number,
+    state: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  getAzureDevOpsWorkItemTypes: (
+    projectId: string
+  ) => Promise<{ success: boolean; types?: import('./sync').ADOWorkItemType[]; error?: string }>;
+  getAzureDevOpsWorkItemStates: (
+    projectId: string,
+    workItemType: string
+  ) => Promise<{ success: boolean; states?: import('./sync').ADOWorkItemState[]; error?: string }>;
+
   // Azure DevOps event listeners
   onAzureDevOpsInvestigationProgress: (
     callback: (projectId: string, status: AzureDevOpsInvestigationStatus) => void
@@ -875,6 +889,10 @@ export interface ElectronAPI {
   // MCP Server health check operations
   checkMcpHealth: (server: CustomMcpServer) => Promise<IPCResult<McpHealthCheckResult>>;
   testMcpConnection: (server: CustomMcpServer) => Promise<IPCResult<McpTestConnectionResult>>;
+
+  // External Sync operations (sync task status to GitHub/Azure DevOps)
+  getSyncConfig: (projectId: string) => Promise<{ success: boolean; config?: import('./sync').ExternalSyncConfig; error?: string }>;
+  saveSyncConfig: (projectId: string, config: import('./sync').ExternalSyncConfig) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {

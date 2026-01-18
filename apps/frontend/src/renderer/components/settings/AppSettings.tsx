@@ -19,7 +19,8 @@ import {
   Globe,
   Code,
   Bug,
-  Server
+  Server,
+  RefreshCw
 } from 'lucide-react';
 
 // GitLab icon component (lucide-react doesn't have one)
@@ -104,7 +105,8 @@ const projectNavItemsConfig: NavItemConfig<ProjectSettingsSection>[] = [
   { id: 'github', icon: Github },
   { id: 'gitlab', icon: GitLabIcon },
   { id: 'azure-devops', icon: AzureDevOpsIcon },
-  { id: 'memory', icon: Database }
+  { id: 'memory', icon: Database },
+  { id: 'sync', icon: RefreshCw }
 ];
 
 /**

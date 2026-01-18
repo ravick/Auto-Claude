@@ -16,6 +16,7 @@ import type { BrowserWindow } from 'electron';
 import { AgentManager } from '../../agent';
 import { registerRepositoryHandlers } from './repository-handlers';
 import { registerIssueHandlers } from './issue-handlers';
+import { registerIssueSyncHandlers } from './issue-sync-handlers';
 import { registerInvestigationHandlers } from './investigation-handlers';
 import { registerImportHandlers } from './import-handlers';
 import { registerReleaseHandlers } from './release-handlers';
@@ -33,6 +34,7 @@ export function registerGithubHandlers(
 ): void {
   registerRepositoryHandlers();
   registerIssueHandlers();
+  registerIssueSyncHandlers();
   registerInvestigationHandlers(agentManager, getMainWindow);
   registerImportHandlers(agentManager);
   registerReleaseHandlers();

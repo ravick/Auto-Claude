@@ -7,6 +7,7 @@ import { LinearIntegration } from '../integrations/LinearIntegration';
 import { GitHubIntegration } from '../integrations/GitHubIntegration';
 import { GitLabIntegration } from '../integrations/GitLabIntegration';
 import { AzureDevOpsIntegration } from '../integrations/AzureDevOpsIntegration';
+import { ExternalSyncSettings } from '../ExternalSyncSettings';
 import { InitializationGuard } from '../common/InitializationGuard';
 import type { ProjectSettingsSection } from '../ProjectSettingsContent';
 
@@ -228,6 +229,15 @@ export function SectionRouter({
             />
           </InitializationGuard>
         </SettingsSection>
+      );
+
+    case 'sync':
+      return (
+        <ExternalSyncSettings
+          projectId={project.id}
+          envConfig={envConfig}
+          isOpen={true}
+        />
       );
 
     default:

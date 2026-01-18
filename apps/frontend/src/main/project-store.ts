@@ -463,6 +463,22 @@ export class ProjectStore {
           }
         }
 
+        // For Azure DevOps tasks, ensure work item type is populated from spec metadata.json
+        // This handles legacy tasks that were imported before azureDevOpsWorkItemType was added
+        if (metadata?.sourceType === 'azure_devops' && metadata?.azureDevOpsWorkItemId && !metadata?.azureDevOpsWorkItemType) {
+          const specMetadataPath = path.join(specPath, 'metadata.json');
+          if (existsSync(specMetadataPath)) {
+            try {
+              const specMetadata = JSON.parse(readFileSync(specMetadataPath, 'utf-8'));
+              if (specMetadata?.azureDevOps?.workItemType) {
+                metadata.azureDevOpsWorkItemType = specMetadata.azureDevOps.workItemType;
+              }
+            } catch {
+              // Ignore parse errors - will fall back to default
+            }
+          }
+        }
+
         // Determine task status and review reason from plan
         // If there's a parse error, override to error status
         let finalStatus: TaskStatus;

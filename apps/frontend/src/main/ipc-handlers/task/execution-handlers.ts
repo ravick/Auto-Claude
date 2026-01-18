@@ -17,6 +17,7 @@ import {
 } from './plan-file-utils';
 import { findTaskWorktree } from '../../worktree-paths';
 import { projectStore } from '../../project-store';
+import { ExternalSyncService } from '../../services/external-sync-service';
 
 /**
  * Atomic file write to prevent TOCTOU race conditions.
@@ -787,6 +788,12 @@ export function registerTaskExecutionHandlers(
             );
           }
         }
+
+        // Fire-and-forget: Sync status to external systems (GitHub, Azure DevOps)
+        // This should never block the local update
+        ExternalSyncService.syncTaskStatus(project, task, status).catch(err => {
+          console.warn('[TASK_UPDATE_STATUS] External sync failed (non-blocking):', err);
+        });
 
         return { success: true };
       } catch (error) {

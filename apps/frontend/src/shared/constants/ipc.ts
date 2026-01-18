@@ -443,6 +443,19 @@ export const IPC_CHANNELS = {
   AZURE_DEVOPS_PR_REVIEW_COMPLETE: 'azureDevOps:pr:reviewComplete',
   AZURE_DEVOPS_PR_REVIEW_ERROR: 'azureDevOps:pr:reviewError',
 
+  // Azure DevOps Work Item Sync operations
+  AZURE_DEVOPS_UPDATE_WORK_ITEM_STATE: 'azureDevOps:updateWorkItemState',
+  AZURE_DEVOPS_GET_WORK_ITEM_TYPES: 'azureDevOps:getWorkItemTypes',
+  AZURE_DEVOPS_GET_WORK_ITEM_STATES: 'azureDevOps:getWorkItemStates',
+
+  // GitHub Issue Sync operations
+  GITHUB_UPDATE_ISSUE_STATE: 'github:updateIssueState',
+  GITHUB_ADD_ISSUE_COMMENT: 'github:addIssueComment',
+
+  // External Sync configuration
+  EXTERNAL_SYNC_GET_CONFIG: 'externalSync:getConfig',
+  EXTERNAL_SYNC_SAVE_CONFIG: 'externalSync:saveConfig',
+
   // Memory Infrastructure status (LadybugDB - no Docker required)
   MEMORY_STATUS: 'memory:status',
   MEMORY_LIST_DATABASES: 'memory:listDatabases',

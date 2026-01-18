@@ -9,6 +9,7 @@ import type { AgentManager } from '../../agent';
 
 import { registerRepositoryHandlers } from './repository-handlers';
 import { registerWorkItemHandlers } from './work-item-handlers';
+import { registerWorkItemSyncHandlers } from './work-item-sync-handlers';
 import { registerDataSourceHandlers } from './data-source-handlers';
 import { registerInvestigationHandlers } from './investigation-handlers';
 import { registerImportHandlers } from './import-handlers';
@@ -39,6 +40,9 @@ export function registerAzureDevOpsHandlers(
   // Work item handlers (list, get work items)
   registerWorkItemHandlers();
 
+  // Work item sync handlers (update state, get types/states for status mapping)
+  registerWorkItemSyncHandlers();
+
   // Data source handlers (teams, backlogs, saved queries)
   registerDataSourceHandlers();
 
@@ -61,6 +65,7 @@ export function registerAzureDevOpsHandlers(
 export {
   registerRepositoryHandlers,
   registerWorkItemHandlers,
+  registerWorkItemSyncHandlers,
   registerDataSourceHandlers,
   registerInvestigationHandlers,
   registerImportHandlers,

@@ -87,6 +87,20 @@ export interface AzureDevOpsAPI {
   onAzureDevOpsPRReviewError: (
     callback: (projectId: string, error: string) => void
   ) => IpcListenerCleanup;
+
+  // Work item sync operations (for external status sync)
+  updateWorkItemState: (
+    projectId: string,
+    workItemId: number,
+    state: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  getWorkItemTypes: (
+    projectId: string
+  ) => Promise<{ success: boolean; types?: Array<{ name: string; description?: string; icon?: string }>; error?: string }>;
+  getWorkItemStates: (
+    projectId: string,
+    workItemType: string
+  ) => Promise<{ success: boolean; states?: Array<{ name: string; color?: string; category?: string }>; error?: string }>;
 }
 
 /**
@@ -199,5 +213,24 @@ export const createAzureDevOpsAPI = (): AzureDevOpsAPI => ({
   onAzureDevOpsPRReviewError: (
     callback: (projectId: string, error: string) => void
   ): IpcListenerCleanup =>
-    createIpcListener(IPC_CHANNELS.AZURE_DEVOPS_PR_REVIEW_ERROR, callback)
+    createIpcListener(IPC_CHANNELS.AZURE_DEVOPS_PR_REVIEW_ERROR, callback),
+
+  // Work item sync operations (for external status sync)
+  updateWorkItemState: (
+    projectId: string,
+    workItemId: number,
+    state: string
+  ): Promise<{ success: boolean; error?: string }> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_UPDATE_WORK_ITEM_STATE, projectId, workItemId, state),
+
+  getWorkItemTypes: (
+    projectId: string
+  ): Promise<{ success: boolean; types?: Array<{ name: string; description?: string; icon?: string }>; error?: string }> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_GET_WORK_ITEM_TYPES, projectId),
+
+  getWorkItemStates: (
+    projectId: string,
+    workItemType: string
+  ): Promise<{ success: boolean; states?: Array<{ name: string; color?: string; category?: string }>; error?: string }> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_GET_WORK_ITEM_STATES, projectId, workItemType)
 });

@@ -136,6 +136,17 @@ export const integrationMock = {
     }
   }),
 
+  // GitHub Issue Sync Operations
+  updateIssueState: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  addIssueComment: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
   onGitHubInvestigationProgress: () => () => {},
   onGitHubInvestigationComplete: () => () => {},
   onGitHubInvestigationError: () => () => {},
@@ -536,5 +547,43 @@ export const integrationMock = {
   onAzureDevOpsInvestigationError: () => () => {},
   onAzureDevOpsPRReviewProgress: () => () => {},
   onAzureDevOpsPRReviewComplete: () => () => {},
-  onAzureDevOpsPRReviewError: () => () => {}
+  onAzureDevOpsPRReviewError: () => () => {},
+
+  // Azure DevOps Work Item Sync Operations
+  updateAzureDevOpsWorkItemState: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  getAzureDevOpsWorkItemTypes: async () => ({
+    success: true,
+    types: [
+      { name: 'Bug', description: 'A defect in the product' },
+      { name: 'User Story', description: 'A user-facing feature' },
+      { name: 'Task', description: 'A unit of work' }
+    ]
+  }),
+
+  getAzureDevOpsWorkItemStates: async () => ({
+    success: true,
+    states: [
+      { name: 'New', color: '007ACC', category: 'Proposed' },
+      { name: 'Active', color: '007ACC', category: 'InProgress' },
+      { name: 'Closed', color: '339933', category: 'Completed' }
+    ]
+  }),
+
+  // External Sync API Operations
+  getSyncConfig: async () => ({
+    success: true,
+    config: {
+      enabled: false,
+      syncToGitHub: false,
+      syncToAzureDevOps: false
+    }
+  }),
+
+  saveSyncConfig: async () => ({
+    success: true
+  })
 };

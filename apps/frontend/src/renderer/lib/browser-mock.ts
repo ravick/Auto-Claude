@@ -226,7 +226,10 @@ const browserMockAPI: ElectronAPI = {
     approveBatches: async () => ({ success: true, batches: [] }),
     onAnalyzePreviewProgress: () => () => {},
     onAnalyzePreviewComplete: () => () => {},
-    onAnalyzePreviewError: () => () => {}
+    onAnalyzePreviewError: () => () => {},
+    // Issue sync operations (for external status sync)
+    updateIssueState: async () => ({ success: false, error: 'Not available in browser mock' }),
+    addIssueComment: async () => ({ success: false, error: 'Not available in browser mock' })
   },
 
   // Azure DevOps Integration Operations
