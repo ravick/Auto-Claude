@@ -54,6 +54,50 @@ function debugLog(message: string, data?: unknown): void {
 }
 
 /**
+ * Deduplication cache for ADO sync calls
+ * Prevents redundant API calls when multiple handlers trigger sync for the same status change
+ * Key: workItemId, Value: { state, timestamp }
+ */
+const adoSyncCache = new Map<number, { state: string; timestamp: number }>();
+const ADO_SYNC_DEDUP_WINDOW_MS = 5000; // 5 seconds - skip duplicate syncs within this window
+
+/**
+ * Check if we should skip this ADO sync (already synced to same state recently)
+ */
+function shouldSkipAdoSync(workItemId: number, targetState: string): boolean {
+  const cached = adoSyncCache.get(workItemId);
+  if (!cached) return false;
+
+  const now = Date.now();
+  const withinWindow = (now - cached.timestamp) < ADO_SYNC_DEDUP_WINDOW_MS;
+  const sameState = cached.state === targetState;
+
+  if (withinWindow && sameState) {
+    debugLog(`Skipping duplicate ADO sync for work item #${workItemId} to state '${targetState}' (synced ${now - cached.timestamp}ms ago)`);
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Record a successful ADO sync for deduplication
+ */
+function recordAdoSync(workItemId: number, state: string): void {
+  adoSyncCache.set(workItemId, { state, timestamp: Date.now() });
+
+  // Clean up old entries periodically (keep cache from growing unbounded)
+  if (adoSyncCache.size > 100) {
+    const now = Date.now();
+    for (const [id, entry] of adoSyncCache.entries()) {
+      if (now - entry.timestamp > ADO_SYNC_DEDUP_WINDOW_MS * 2) {
+        adoSyncCache.delete(id);
+      }
+    }
+  }
+}
+
+/**
  * Generate a meaningful discussion comment based on sync context
  */
 function generateSyncComment(
@@ -348,6 +392,18 @@ async function syncToAzureDevOps(
     };
   }
 
+  // Check deduplication - skip if we just synced this work item to the same state
+  if (shouldSkipAdoSync(workItemId, adoState)) {
+    return {
+      success: true,
+      taskId: task.id,
+      externalId: workItemId,
+      externalType: 'azure_devops',
+      action: 'no_action', // Already synced
+      timestamp,
+    };
+  }
+
   const config = getAzureDevOpsConfig(project);
   if (!config) {
     return {
@@ -365,69 +421,106 @@ async function syncToAzureDevOps(
     };
   }
 
-  try {
-    // Build discussion comment - use context-aware generator for meaningful comments
-    const discussionComment = generateSyncComment(oldAdoState, adoState, context);
+  // Build discussion comment - use context-aware generator for meaningful comments
+  const discussionComment = generateSyncComment(oldAdoState, adoState, context);
 
-    // Azure DevOps uses JSON Patch format for updates
-    const patchDocument = [
-      {
-        op: 'replace',
-        path: '/fields/System.State',
-        value: adoState,
-      },
-      {
-        op: 'add',
-        path: '/fields/System.History',
-        value: discussionComment,
-      },
-    ];
+  // Azure DevOps uses JSON Patch format for updates
+  const patchDocument = [
+    {
+      op: 'replace',
+      path: '/fields/System.State',
+      value: adoState,
+    },
+    {
+      op: 'add',
+      path: '/fields/System.History',
+      value: discussionComment,
+    },
+  ];
 
-    await adoFetch(
-      config,
-      `/workitems/${workItemId}`,
-      {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json-patch+json',
-        },
-        body: JSON.stringify(patchDocument),
+  // Retry logic for 409 Conflict errors (work item revision mismatch)
+  // This happens when multiple concurrent updates occur - a brief delay and retry resolves it
+  const maxRetries = 3;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await adoFetch(
+        config,
+        `/workitems/${workItemId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json-patch+json',
+          },
+          body: JSON.stringify(patchDocument),
+        }
+      );
+
+      debugLog(`Synced ADO work item #${workItemId} to state '${adoState}' with discussion comment`);
+
+      // Record successful sync for deduplication
+      recordAdoSync(workItemId, adoState);
+
+      return {
+        success: true,
+        taskId: task.id,
+        externalId: workItemId,
+        externalType: 'azure_devops',
+        action: 'state_update',
+        newState: adoState,
+        timestamp,
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      const message = lastError.message;
+
+      // Check if this is a 409 Conflict (revision mismatch) - retry with delay
+      const is409Conflict = message.includes('409') || message.includes('Conflict');
+      if (is409Conflict && attempt < maxRetries) {
+        const delayMs = attempt * 500; // Exponential backoff: 500ms, 1000ms
+        debugLog(`ADO 409 Conflict for work item #${workItemId}, retrying in ${delayMs}ms (attempt ${attempt}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
       }
-    );
 
-    debugLog(`Synced ADO work item #${workItemId} to state '${adoState}' with discussion comment`);
+      // Non-retryable error or max retries reached
+      debugLog(`Failed to sync ADO work item #${workItemId}:`, message);
 
-    return {
-      success: true,
-      taskId: task.id,
-      externalId: workItemId,
-      externalType: 'azure_devops',
-      action: 'state_update',
-      newState: adoState,
-      timestamp,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    debugLog(`Failed to sync ADO work item #${workItemId}:`, message);
+      // Determine error type
+      const isAuthError = message.includes('401') || message.includes('403') || message.includes('Authentication');
+      const is5xx = message.includes('500') || message.includes('502') || message.includes('503');
 
-    // Determine if error is retryable
-    const isAuthError = message.includes('401') || message.includes('403') || message.includes('Authentication');
-    const is5xx = message.includes('500') || message.includes('502') || message.includes('503');
-
-    return {
-      success: false,
-      taskId: task.id,
-      externalId: workItemId,
-      externalType: 'azure_devops',
-      action: 'state_update',
-      error: {
-        code: isAuthError ? 'AUTH_ERROR' : is5xx ? 'SERVER_ERROR' : 'UNKNOWN',
-        message,
-        retryable: is5xx,
-      },
-      timestamp,
-    };
+      return {
+        success: false,
+        taskId: task.id,
+        externalId: workItemId,
+        externalType: 'azure_devops',
+        action: 'state_update',
+        error: {
+          code: isAuthError ? 'AUTH_ERROR' : is409Conflict ? 'CONFLICT' : is5xx ? 'SERVER_ERROR' : 'UNKNOWN',
+          message,
+          retryable: is409Conflict || is5xx,
+        },
+        timestamp,
+      };
+    }
   }
+
+  // Should not reach here, but handle just in case
+  return {
+    success: false,
+    taskId: task.id,
+    externalId: workItemId,
+    externalType: 'azure_devops',
+    action: 'state_update',
+    error: {
+      code: 'MAX_RETRIES',
+      message: lastError?.message || 'Max retries exceeded',
+      retryable: false,
+    },
+    timestamp,
+  };
 }
 
 /**

@@ -103,12 +103,20 @@ export async function adoFetch<T>(
     endpoint = endpoint.replace('/git/', '/');
   }
 
-  // Build URL
+  // Build URL - some endpoints are organization-level, not project-level
+  const isOrgLevelEndpoint = endpoint.startsWith('/_apis/projects');
+
   if (endpoint.startsWith('/_apis/')) {
-    // Full endpoint path
-    baseUrl = `https://dev.azure.com/${config.organization}/${config.project}${endpoint}`;
+    // Full endpoint path - determine if org-level or project-level
+    if (isOrgLevelEndpoint) {
+      // Organization-level API (e.g., /_apis/projects/{project})
+      baseUrl = `https://dev.azure.com/${config.organization}${endpoint}`;
+    } else {
+      // Project-level API
+      baseUrl = `https://dev.azure.com/${config.organization}/${config.project}${endpoint}`;
+    }
   } else {
-    // Build with area
+    // Build with area (always project-level)
     baseUrl = `https://dev.azure.com/${config.organization}/${config.project}/_apis/${area}${endpoint}`;
   }
 
