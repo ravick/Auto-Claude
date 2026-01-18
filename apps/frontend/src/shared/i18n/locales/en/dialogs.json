@@ -51,7 +51,7 @@
     "connectDescription": "Enter your Personal Access Token to connect to Azure DevOps.",
     "patTitle": "Personal Access Token",
     "patPlaceholder": "Paste your Personal Access Token",
-    "patHelp": "Create a PAT with Code (Read, Write) scope in Azure DevOps Settings.",
+    "patHelp": "Create a PAT with Work Items (Read, Write), Code (Read, Write), and Project and Team (Read) scopes.",
     "createPatLink": "Create PAT in Azure DevOps",
     "organizationTitle": "Select Organization",
     "projectTitle": "Select Project",

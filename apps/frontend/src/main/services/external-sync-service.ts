@@ -21,6 +21,12 @@ import { mapStatusToGitHub, mapStatusToADO } from '../../shared/types/sync';
 import { getGitHubConfig, githubFetch, normalizeRepoReference } from '../ipc-handlers/github/utils';
 import { getAzureDevOpsConfig, adoFetch } from '../ipc-handlers/azure-devops/utils';
 import { projectStore } from '../project-store';
+import type { ADOAttachmentInfo, ADOWorkItemRelation } from '../ipc-handlers/azure-devops/types';
+import {
+  processWorkItemAttachments,
+  replaceAttachmentUrls,
+  generateAttachmentsMarkdown,
+} from '../ipc-handlers/azure-devops/attachment-utils';
 
 /**
  * Context for sync operations - provides additional information for meaningful comments
@@ -936,7 +942,7 @@ export async function syncFromADO(taskId: string): Promise<{ success: boolean; e
   }
 
   try {
-    // Fetch work item from ADO
+    // Fetch work item from ADO with relations (for attachments)
     const workItem = await adoFetch<{
       id: number;
       fields: {
@@ -947,17 +953,80 @@ export async function syncFromADO(taskId: string): Promise<{ success: boolean; e
         'System.Tags'?: string;
         'Microsoft.VSTS.TCM.ReproSteps'?: string;
         'Microsoft.VSTS.Common.AcceptanceCriteria'?: string;
+        'Microsoft.VSTS.TCM.SystemInfo'?: string;
         'System.AssignedTo'?: { displayName: string; uniqueName: string };
       };
-    }>(config, `/workitems/${metadata.azureDevOpsWorkItemId}`);
+      relations?: ADOWorkItemRelation[];
+    }>(config, `/workitems/${metadata.azureDevOpsWorkItemId}?$expand=relations`);
 
     const fields = workItem.fields;
     const title = fields['System.Title'] || task.title;
-    const description = stripHtml(fields['System.Description'] || '');
     const workItemType = fields['System.WorkItemType'] || 'Task';
-    const reproSteps = stripHtml(fields['Microsoft.VSTS.TCM.ReproSteps'] || '');
-    const acceptanceCriteria = stripHtml(fields['Microsoft.VSTS.Common.AcceptanceCriteria'] || '');
     const tags = fields['System.Tags']?.split(';').map(t => t.trim()).filter(Boolean) || [];
+
+    // Find the spec path - use specsPath from task if available
+    const specsBaseDir = project.autoBuildPath ? join(project.autoBuildPath, 'specs') : '.auto-claude/specs';
+    const specPath = task.specsPath || join(project.path, specsBaseDir, taskId);
+
+    if (!existsSync(specPath)) {
+      return { success: false, error: `Spec directory not found: ${specPath}` };
+    }
+
+    // Load existing attachments from task_metadata.json
+    const metadataPath = join(specPath, 'task_metadata.json');
+    let taskMetadata: Record<string, unknown> = {};
+    let existingAttachments: ADOAttachmentInfo[] = [];
+
+    if (existsSync(metadataPath)) {
+      try {
+        taskMetadata = JSON.parse(readFileSync(metadataPath, 'utf-8'));
+        if (Array.isArray(taskMetadata.attachments)) {
+          existingAttachments = taskMetadata.attachments as ADOAttachmentInfo[];
+        }
+      } catch {
+        // Start fresh if parse fails
+      }
+    }
+
+    // Process attachments (downloads new ones, skips existing)
+    let allAttachments: ADOAttachmentInfo[] = [...existingAttachments];
+    try {
+      // Build a mock work item response for attachment processing
+      const workItemForAttachments = {
+        id: workItem.id,
+        rev: 0,
+        url: '',
+        fields: fields as Record<string, unknown>,
+        relations: workItem.relations,
+      };
+
+      const newAttachments = await processWorkItemAttachments(
+        workItemForAttachments as never,
+        config,
+        specPath,
+        existingAttachments
+      );
+
+      // Merge new attachments with existing ones
+      if (newAttachments.length > 0) {
+        allAttachments = [...existingAttachments, ...newAttachments];
+        debugLog(`Downloaded ${newAttachments.length} new attachments for task ${taskId}`);
+      }
+    } catch (attachmentError) {
+      debugLog('Error processing attachments during sync:', attachmentError);
+      // Continue with sync - attachments are not critical
+    }
+
+    // Strip HTML and replace attachment URLs with local paths
+    let description = stripHtml(fields['System.Description'] || '');
+    let reproSteps = stripHtml(fields['Microsoft.VSTS.TCM.ReproSteps'] || '');
+    let acceptanceCriteria = stripHtml(fields['Microsoft.VSTS.Common.AcceptanceCriteria'] || '');
+
+    if (allAttachments.length > 0) {
+      description = replaceAttachmentUrls(description, allAttachments);
+      reproSteps = replaceAttachmentUrls(reproSteps, allAttachments);
+      acceptanceCriteria = replaceAttachmentUrls(acceptanceCriteria, allAttachments);
+    }
 
     // Build the TASK.md content in the standard format
     const sections: string[] = [];
@@ -989,36 +1058,25 @@ export async function syncFromADO(taskId: string): Promise<{ success: boolean; e
       sections.push(acceptanceCriteria);
     }
 
+    // Add attachments table if we have any
+    if (allAttachments.length > 0) {
+      sections.push(generateAttachmentsMarkdown(allAttachments));
+    }
+
     sections.push('');
     sections.push('---');
     sections.push('');
     sections.push(`[View in Azure DevOps](${metadata.azureDevOpsUrl})`);
 
-    // Find the spec path - use specsPath from task if available
-    const specsBaseDir = project.autoBuildPath ? join(project.autoBuildPath, 'specs') : '.auto-claude/specs';
-    const specPath = task.specsPath || join(project.path, specsBaseDir, taskId);
-
-    if (!existsSync(specPath)) {
-      return { success: false, error: `Spec directory not found: ${specPath}` };
-    }
-
     // Write TASK.md
     const taskMdPath = join(specPath, 'TASK.md');
     writeFileSync(taskMdPath, sections.join('\n'), 'utf-8');
 
-    // Update task_metadata.json
-    const metadataPath = join(specPath, 'task_metadata.json');
-    let taskMetadata: Record<string, unknown> = {};
-    if (existsSync(metadataPath)) {
-      try {
-        taskMetadata = JSON.parse(readFileSync(metadataPath, 'utf-8'));
-      } catch {
-        // Start fresh if parse fails
-      }
-    }
-
-    // Update fields from ADO
+    // Update task_metadata.json with work item type and attachments
     taskMetadata.azureDevOpsWorkItemType = workItemType;
+    if (allAttachments.length > 0) {
+      taskMetadata.attachments = allAttachments;
+    }
 
     writeFileSync(metadataPath, JSON.stringify(taskMetadata, null, 2), 'utf-8');
 

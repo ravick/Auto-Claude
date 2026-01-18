@@ -46,9 +46,10 @@ export function registerImportWorkItems(): void {
       for (const workItemId of workItemIds) {
         try {
           // Fetch the work item with all standard and type-specific fields
+          // Include $expand=relations to get attachments for import
           const workItem = await adoFetch<ADOWorkItemResponse>(
             config,
-            `/workitems/${workItemId}?fields=${fieldsParam}`
+            `/workitems/${workItemId}?fields=${fieldsParam}&$expand=relations`
           );
 
           // Create a spec/task from the work item

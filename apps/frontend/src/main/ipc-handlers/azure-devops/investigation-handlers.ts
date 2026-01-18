@@ -89,11 +89,12 @@ export function registerInvestigateWorkItem(
         // Fetch work item with all standard fields plus type-specific fields
         // (e.g., Repro Steps for Bugs, Acceptance Criteria for User Stories)
         // We fetch all possible fields since we don't know the work item type upfront
+        // Include $expand=relations to get attachments
         const fieldsParam = getFieldsForWorkItemType().join(',');
 
         const workItem = await adoFetch<ADOWorkItemResponse>(
           config,
-          `/workitems/${workItemId}?fields=${fieldsParam}`
+          `/workitems/${workItemId}?fields=${fieldsParam}&$expand=relations`
         );
 
         // Phase 2: Analyzing

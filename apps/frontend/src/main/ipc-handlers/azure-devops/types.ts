@@ -31,6 +31,8 @@ export interface ADOWorkItemResponse {
     [key: string]: unknown;
   };
   url: string;
+  /** Work item relations (attachments, links, etc.) - populated when using $expand=relations */
+  relations?: ADOWorkItemRelation[];
   _links?: {
     self: { href: string };
     workItemUpdates: { href: string };
@@ -351,6 +353,64 @@ export interface ADOQueryItem {
 export interface ADOQueryListResponse {
   count: number;
   value: ADOQueryItem[];
+}
+
+// ============================================
+// Attachment Types
+// ============================================
+
+/**
+ * Represents an attachment downloaded from Azure DevOps
+ */
+export interface ADOAttachmentInfo {
+  /** Azure DevOps attachment GUID */
+  id: string;
+  /** Original filename from ADO */
+  filename: string;
+  /** Original URL from ADO */
+  originalUrl: string;
+  /** Local path relative to spec directory (e.g., "attachments/guid-filename.png") */
+  localPath: string;
+  /** MIME type of the file */
+  mimeType: string;
+  /** File size in bytes */
+  size: number;
+  /** Source: 'inline' for images in HTML content, 'attached' for file attachments */
+  source: 'inline' | 'attached';
+}
+
+/**
+ * Result of an attachment download operation
+ */
+export interface ADOAttachmentDownloadResult {
+  success: boolean;
+  attachment?: ADOAttachmentInfo;
+  error?: string;
+  skipped?: boolean;
+  skipReason?: 'already_exists' | 'size_exceeded' | 'invalid_mime_type' | 'invalid_url' | 'download_failed';
+}
+
+/**
+ * Work item relation from ADO API
+ */
+export interface ADOWorkItemRelation {
+  /** Relation type (e.g., 'AttachedFile', 'ArtifactLink') */
+  rel: string;
+  /** URL of the related resource */
+  url: string;
+  /** Relation attributes */
+  attributes?: {
+    /** Attachment name (for AttachedFile relations) */
+    name?: string;
+    /** Resource size in bytes */
+    resourceSize?: number;
+    /** Comment on the attachment */
+    comment?: string;
+    /** Date the attachment was added */
+    authorizedDate?: string;
+    /** Resource creation date */
+    resourceCreatedDate?: string;
+  };
 }
 
 // ============================================

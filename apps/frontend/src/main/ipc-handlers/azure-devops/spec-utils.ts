@@ -6,9 +6,14 @@
 import { mkdir, writeFile, readFile, stat } from 'fs/promises';
 import path from 'path';
 import type { Project } from '../../../shared/types';
-import type { ADOWorkItemResponse, AzureDevOpsConfig } from './types';
+import type { ADOWorkItemResponse, AzureDevOpsConfig, ADOAttachmentInfo } from './types';
 import { stripHtml } from './utils';
 import { labelMatchesWholeWord } from '../shared/label-utils';
+import {
+  processWorkItemAttachments,
+  replaceAttachmentUrls,
+  generateAttachmentsMarkdown,
+} from './attachment-utils';
 
 /**
  * Field mapping configuration for Azure DevOps work item types.
@@ -261,6 +266,13 @@ interface SanitizedWorkItem {
   webUrl: string;
   /** Type-specific detail fields (e.g., Repro Steps for Bugs) */
   detailFields: DetailField[];
+  /** Raw HTML content for attachment URL extraction */
+  rawHtmlFields: {
+    description: string;
+    reproSteps: string;
+    acceptanceCriteria: string;
+    systemInfo: string;
+  };
 }
 
 function sanitizeWorkItemForSpec(
@@ -324,6 +336,13 @@ function sanitizeWorkItemForSpec(
     changedDate: sanitizeIsoDate(fields['System.ChangedDate']),
     webUrl,
     detailFields,
+    // Preserve raw HTML for attachment URL extraction
+    rawHtmlFields: {
+      description: typeof fields['System.Description'] === 'string' ? fields['System.Description'] : '',
+      reproSteps: typeof fields['Microsoft.VSTS.TCM.ReproSteps'] === 'string' ? fields['Microsoft.VSTS.TCM.ReproSteps'] : '',
+      acceptanceCriteria: typeof fields['Microsoft.VSTS.Common.AcceptanceCriteria'] === 'string' ? fields['Microsoft.VSTS.Common.AcceptanceCriteria'] : '',
+      systemInfo: typeof fields['Microsoft.VSTS.TCM.SystemInfo'] === 'string' ? fields['Microsoft.VSTS.TCM.SystemInfo'] : '',
+    },
   };
 }
 
@@ -345,10 +364,14 @@ function generateSpecDirName(workItemId: number, title: string): string {
 
 /**
  * Build work item context for spec creation
+ * @param workItem - The ADO work item response
+ * @param config - Azure DevOps configuration
+ * @param attachments - Optional array of downloaded attachments to include references
  */
 export function buildWorkItemContext(
   workItem: ADOWorkItemResponse,
-  config: AzureDevOpsConfig
+  config: AzureDevOpsConfig,
+  attachments?: ADOAttachmentInfo[]
 ): string {
   const lines: string[] = [];
   const safeWorkItem = sanitizeWorkItemForSpec(workItem, config);
@@ -378,10 +401,15 @@ export function buildWorkItemContext(
   }
 
   // Add Description section
+  // If we have attachments, replace ADO URLs with local paths
   lines.push('');
   lines.push('## Description');
   lines.push('');
-  lines.push(safeWorkItem.description || '_No description provided_');
+  let description = safeWorkItem.description || '_No description provided_';
+  if (attachments && attachments.length > 0) {
+    description = replaceAttachmentUrls(description, attachments);
+  }
+  lines.push(description);
 
   // Add type-specific detail fields (e.g., Repro Steps for Bugs, Acceptance Criteria for User Stories)
   // Note: If no detail fields exist (field not on work item type or empty), this loop is safely skipped
@@ -389,7 +417,16 @@ export function buildWorkItemContext(
     lines.push('');
     lines.push(`## ${detailField.label}`);
     lines.push('');
-    lines.push(detailField.content);
+    let content = detailField.content;
+    if (attachments && attachments.length > 0) {
+      content = replaceAttachmentUrls(content, attachments);
+    }
+    lines.push(content);
+  }
+
+  // Add attachments table if we have any
+  if (attachments && attachments.length > 0) {
+    lines.push(generateAttachmentsMarkdown(attachments));
   }
 
   lines.push('');
@@ -498,8 +535,20 @@ export async function createSpecForWorkItem(
     // Create spec directory
     await mkdir(specDir, { recursive: true });
 
-    // Create TASK.md with work item context
-    const taskContent = buildWorkItemContext(workItem, config);
+    // Process attachments (download inline images and attached files)
+    let attachments: ADOAttachmentInfo[] = [];
+    try {
+      attachments = await processWorkItemAttachments(workItem, config, specDir);
+      if (attachments.length > 0) {
+        debugLog(`Downloaded ${attachments.length} attachments for work item #${safeWorkItem.id}`);
+      }
+    } catch (attachmentError) {
+      // Log error but continue - attachments are not critical
+      debugLog('Error processing attachments:', { workItemId: safeWorkItem.id, error: attachmentError });
+    }
+
+    // Create TASK.md with work item context (includes attachment references)
+    const taskContent = buildWorkItemContext(workItem, config, attachments);
     await writeFile(path.join(specDir, 'TASK.md'), taskContent, 'utf-8');
 
     // Create metadata.json (Azure DevOps-specific data)
@@ -521,14 +570,16 @@ export async function createSpecForWorkItem(
     await writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
 
     // Create task_metadata.json (consistent with GitHub/GitLab format for backend compatibility)
-    const taskMetadata = {
+    const taskMetadata: Record<string, unknown> = {
       sourceType: 'azure_devops' as const,
       azureDevOpsWorkItemId: safeWorkItem.id,
       azureDevOpsUrl: safeWorkItem.webUrl,
       azureDevOpsWorkItemType: safeWorkItem.workItemType,  // Store work item type for status mapping
       category: determineCategoryFromWorkItem(safeWorkItem.workItemType, safeWorkItem.tags),
       // Store baseBranch for worktree creation and QA comparison
-      ...(baseBranch && { baseBranch })
+      ...(baseBranch && { baseBranch }),
+      // Include attachment metadata if any were downloaded
+      ...(attachments.length > 0 && { attachments }),
     };
     await writeFile(
       path.join(specDir, 'task_metadata.json'),
