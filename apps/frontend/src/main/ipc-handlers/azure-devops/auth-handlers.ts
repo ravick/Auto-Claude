@@ -643,6 +643,77 @@ export function registerGetAzureDevOpsBranches(): void {
 }
 
 /**
+ * Initialize an empty Azure DevOps repository with a README and default branch
+ */
+export function registerInitializeAzureDevOpsRepo(): void {
+  ipcMain.handle(
+    IPC_CHANNELS.AZURE_DEVOPS_INITIALIZE_REPO,
+    async (
+      _event,
+      organization: string,
+      project: string,
+      repo: string,
+      branchName: string,
+      pat: string
+    ): Promise<IPCResult<{ branchName: string }>> => {
+      debugLog('initializeAzureDevOpsRepo handler called', { organization, project, repo, branchName });
+
+      try {
+        // Create initial commit with README using the Push API
+        const pushUrl = `https://dev.azure.com/${organization}/${project}/_apis/git/repositories/${repo}/pushes?api-version=7.1`;
+
+        const readmeContent = `# ${repo}\n\nThis repository was initialized by Auto Claude.\n`;
+        const base64Content = Buffer.from(readmeContent).toString('base64');
+
+        const pushPayload = {
+          refUpdates: [
+            {
+              name: `refs/heads/${branchName}`,
+              oldObjectId: '0000000000000000000000000000000000000000' // Empty repo marker
+            }
+          ],
+          commits: [
+            {
+              comment: 'Initial commit - Repository initialized by Auto Claude',
+              changes: [
+                {
+                  changeType: 'add',
+                  item: {
+                    path: '/README.md'
+                  },
+                  newContent: {
+                    content: base64Content,
+                    contentType: 'base64encoded'
+                  }
+                }
+              ]
+            }
+          ]
+        };
+
+        await adoFetchWithPat<unknown>(pat, pushUrl, {
+          method: 'POST',
+          body: JSON.stringify(pushPayload)
+        });
+
+        debugLog(`Repository initialized with branch: ${branchName}`);
+        return {
+          success: true,
+          data: { branchName }
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to initialize repository';
+        debugLog('Failed to initialize repository:', errorMessage);
+        return {
+          success: false,
+          error: errorMessage
+        };
+      }
+    }
+  );
+}
+
+/**
  * Register all Azure DevOps auth handlers
  */
 export function registerAuthHandlers(): void {
@@ -655,5 +726,6 @@ export function registerAuthHandlers(): void {
   registerCreateAzureDevOpsRepo();
   registerAddAzureDevOpsRemote();
   registerGetAzureDevOpsBranches();
+  registerInitializeAzureDevOpsRepo();
   debugLog('Azure DevOps auth handlers registered');
 }

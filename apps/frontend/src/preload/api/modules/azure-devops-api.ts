@@ -43,6 +43,7 @@ export interface AzureDevOpsAPI {
   createAzureDevOpsRepo: (pat: string, organization: string, project: string, repoName: string) => Promise<IPCResult<{ id: string; name: string; remoteUrl: string }>>;
   addAzureDevOpsRemote: (projectPath: string, organization: string, project: string, repo: string) => Promise<IPCResult<{ remoteUrl: string }>>;
   getAzureDevOpsBranches: (organization: string, project: string, repo: string, pat: string) => Promise<IPCResult<string[]>>;
+  initializeAzureDevOpsRepo: (organization: string, project: string, repo: string, branchName: string, pat: string) => Promise<IPCResult<{ branchName: string }>>;
 
   // Project and repository operations
   getAzureDevOpsProjects: (projectId: string) => Promise<IPCResult<AzureDevOpsProject[]>>;
@@ -131,6 +132,9 @@ export const createAzureDevOpsAPI = (): AzureDevOpsAPI => ({
 
   getAzureDevOpsBranches: (organization: string, project: string, repo: string, pat: string): Promise<IPCResult<string[]>> =>
     invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_GET_BRANCHES, organization, project, repo, pat),
+
+  initializeAzureDevOpsRepo: (organization: string, project: string, repo: string, branchName: string, pat: string): Promise<IPCResult<{ branchName: string }>> =>
+    invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_INITIALIZE_REPO, organization, project, repo, branchName, pat),
 
   // Project and repository operations
   getAzureDevOpsProjects: (projectId: string): Promise<IPCResult<AzureDevOpsProject[]>> =>

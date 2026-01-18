@@ -441,6 +441,11 @@ export const integrationMock = {
     data: []
   }),
 
+  initializeAzureDevOpsRepo: async (_organization: string, _project: string, _repo: string, branchName: string) => ({
+    success: true,
+    data: { branchName }
+  }),
+
   // Azure DevOps Integration Operations
   getAzureDevOpsProjects: async () => ({
     success: true,

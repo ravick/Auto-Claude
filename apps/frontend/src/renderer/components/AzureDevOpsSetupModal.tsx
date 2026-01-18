@@ -10,7 +10,9 @@ import {
   Plus,
   Link,
   Building,
-  FolderGit2
+  FolderGit2,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 import { Button } from './ui/button';
 import {
@@ -92,6 +94,8 @@ export function AzureDevOpsSetupModal({
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
   const [recommendedBranch, setRecommendedBranch] = useState<string | null>(null);
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+  const [isCreatingBranch, setIsCreatingBranch] = useState(false);
+  const [manualBranchName, setManualBranchName] = useState<string>('master');
   const [isLoadingRepo, setIsLoadingRepo] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -120,6 +124,7 @@ export function AzureDevOpsSetupModal({
       setBranches([]);
       setSelectedBranch(null);
       setRecommendedBranch(null);
+      setManualBranchName('master');
       setError(null);
       setRepoAction(null);
       setNewRepoName(project.name.replace(/[^A-Za-z0-9_.-]/g, '-'));
@@ -265,6 +270,55 @@ export function AzureDevOpsSetupModal({
       }
     }
     return branchList[0] || null;
+  };
+
+  // Handle refresh branches button click
+  const handleRefreshBranches = async () => {
+    if (detectedRepo) {
+      await loadBranches(detectedRepo.organization, detectedRepo.project, detectedRepo.repository);
+    } else if (selectedOrg && selectedProject && selectedRepo) {
+      await loadBranches(selectedOrg, selectedProject, selectedRepo);
+    }
+  };
+
+  // Handle creating/initializing a branch (for empty repos)
+  const handleCreateBranch = async () => {
+    if (!pat || !manualBranchName.trim()) return;
+
+    const org = detectedRepo?.organization || selectedOrg;
+    const proj = detectedRepo?.project || selectedProject;
+    const repo = detectedRepo?.repository || selectedRepo;
+
+    if (!org || !proj || !repo) {
+      setError('Repository information is missing');
+      return;
+    }
+
+    setIsCreatingBranch(true);
+    setError(null);
+
+    try {
+      const result = await window.electronAPI.initializeAzureDevOpsRepo(
+        org,
+        proj,
+        repo,
+        manualBranchName.trim(),
+        pat
+      );
+
+      if (result.success && result.data) {
+        // Branch created successfully, refresh the branch list
+        setBranches([result.data.branchName]);
+        setSelectedBranch(result.data.branchName);
+        setRecommendedBranch(result.data.branchName);
+      } else {
+        setError(result.error || 'Failed to create branch');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create branch');
+    } finally {
+      setIsCreatingBranch(false);
+    }
   };
 
   // Handle PAT auth success
@@ -432,12 +486,17 @@ export function AzureDevOpsSetupModal({
 
   // Handle completion
   const handleComplete = () => {
+    // Determine the branch to use: selected from dropdown or manually entered
+    const branchToUse = branches.length > 0 ? selectedBranch : manualBranchName.trim();
+
     console.debug('[AzureDevOpsSetup] handleComplete called', {
       hasPat: !!pat,
       hasDetectedRepo: !!detectedRepo,
       hasSelectedBranch: !!selectedBranch,
-      detectedRepo,
-      selectedBranch
+      branchesCount: branches.length,
+      manualBranchName,
+      branchToUse,
+      detectedRepo
     });
 
     if (!pat) {
@@ -454,7 +513,7 @@ export function AzureDevOpsSetupModal({
           azureDevOpsOrg: selectedOrg,
           azureDevOpsProject: selectedProject,
           azureDevOpsRepo: selectedRepo,
-          mainBranch: selectedBranch || 'main'
+          mainBranch: branchToUse || 'main'
         });
         return;
       }
@@ -462,8 +521,8 @@ export function AzureDevOpsSetupModal({
       return;
     }
 
-    if (!selectedBranch) {
-      setError('Please select a branch.');
+    if (!branchToUse) {
+      setError('Please select or enter a branch name.');
       return;
     }
 
@@ -473,7 +532,7 @@ export function AzureDevOpsSetupModal({
       azureDevOpsOrg: detectedRepo.organization,
       azureDevOpsProject: detectedRepo.project,
       azureDevOpsRepo: detectedRepo.repository,
-      mainBranch: selectedBranch
+      mainBranch: branchToUse
     });
   };
 
@@ -825,45 +884,119 @@ export function AzureDevOpsSetupModal({
 
               {/* Branch selector */}
               <div className="space-y-2">
-                <Label>Base Branch</Label>
-                <Select
-                  value={selectedBranch || ''}
-                  onValueChange={setSelectedBranch}
-                  disabled={isLoadingBranches || branches.length === 0}
-                >
-                  <SelectTrigger>
-                    {isLoadingBranches ? (
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        <span>Loading branches...</span>
+                <div className="flex items-center justify-between">
+                  <Label>{t('azureDevOpsSetup.baseBranchLabel')}</Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRefreshBranches}
+                    disabled={isLoadingBranches}
+                    className="h-7 px-2 text-xs"
+                  >
+                    <RefreshCw className={`h-3 w-3 mr-1 ${isLoadingBranches ? 'animate-spin' : ''}`} />
+                    {t('azureDevOpsSetup.refreshBranches')}
+                  </Button>
+                </div>
+
+                {/* Show dropdown when branches exist */}
+                {branches.length > 0 ? (
+                  <>
+                    <Select
+                      value={selectedBranch || ''}
+                      onValueChange={setSelectedBranch}
+                      disabled={isLoadingBranches}
+                    >
+                      <SelectTrigger>
+                        {isLoadingBranches ? (
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span>{t('azureDevOpsSetup.loadingBranches')}</span>
+                          </div>
+                        ) : (
+                          <SelectValue placeholder={t('azureDevOpsSetup.selectBranchPlaceholder')} />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        {branches.map((branch) => (
+                          <SelectItem key={branch} value={branch}>
+                            <div className="flex items-center gap-2">
+                              <span>{branch}</span>
+                              {branch === recommendedBranch && (
+                                <span className="flex items-center gap-1 text-xs text-success">
+                                  <Sparkles className="h-3 w-3" />
+                                  {t('azureDevOpsSetup.recommendedBadge')}
+                                </span>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {t('azureDevOpsSetup.branchHelpText')}{' '}
+                      <code className="px-1 bg-muted rounded">auto-claude/task-name</code>
+                      {selectedBranch && (
+                        <> {t('azureDevOpsSetup.basedOn')} <code className="px-1 bg-muted rounded">{selectedBranch}</code></>
+                      )}
+                    </p>
+                  </>
+                ) : (
+                  /* Show manual input when no branches exist (new/empty repo) */
+                  <>
+                    {isLoadingBranches || isCreatingBranch ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>
+                          {isCreatingBranch
+                            ? t('azureDevOpsSetup.creatingBranch')
+                            : t('azureDevOpsSetup.loadingBranches')}
+                        </span>
                       </div>
                     ) : (
-                      <SelectValue placeholder="Select a branch" />
-                    )}
-                  </SelectTrigger>
-                  <SelectContent>
-                    {branches.map((branch) => (
-                      <SelectItem key={branch} value={branch}>
-                        <div className="flex items-center gap-2">
-                          <span>{branch}</span>
-                          {branch === recommendedBranch && (
-                            <span className="flex items-center gap-1 text-xs text-success">
-                              <Sparkles className="h-3 w-3" />
-                              Recommended
-                            </span>
-                          )}
+                      <>
+                        {/* Empty repo info */}
+                        <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
+                          <div className="flex items-start gap-2">
+                            <AlertCircle className="h-4 w-4 text-warning mt-0.5" />
+                            <div className="text-xs text-muted-foreground">
+                              <p className="font-medium text-foreground">{t('azureDevOpsSetup.noBranchesTitle')}</p>
+                              <p className="mt-1">
+                                {t('azureDevOpsSetup.noBranchesDescriptionWithCreate')}
+                              </p>
+                            </div>
+                          </div>
                         </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  All tasks will be created from branches like{' '}
-                  <code className="px-1 bg-muted rounded">auto-claude/task-name</code>
-                  {selectedBranch && (
-                    <> based on <code className="px-1 bg-muted rounded">{selectedBranch}</code></>
-                  )}
-                </p>
+
+                        {/* Branch name input with create button */}
+                        <div className="space-y-2">
+                          <Label htmlFor="manual-branch" className="text-xs">{t('azureDevOpsSetup.branchNameLabel')}</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              id="manual-branch"
+                              value={manualBranchName}
+                              onChange={(e) => setManualBranchName(e.target.value)}
+                              placeholder="master"
+                              className="h-9 flex-1"
+                              disabled={isCreatingBranch}
+                            />
+                            <Button
+                              onClick={handleCreateBranch}
+                              disabled={isCreatingBranch || !manualBranchName.trim()}
+                              size="sm"
+                              className="h-9"
+                            >
+                              <Plus className="h-4 w-4 mr-1" />
+                              {t('azureDevOpsSetup.createBranch')}
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {t('azureDevOpsSetup.createBranchHelpText')}
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
               </div>
 
               {/* Info about branch selection */}
@@ -871,10 +1004,9 @@ export function AzureDevOpsSetupModal({
                 <div className="flex items-start gap-2">
                   <Sparkles className="h-4 w-4 text-info mt-0.5" />
                   <div className="text-xs text-muted-foreground">
-                    <p className="font-medium text-foreground">Why select a branch?</p>
+                    <p className="font-medium text-foreground">{t('azureDevOpsSetup.whySelectBranch')}</p>
                     <p className="mt-1">
-                      Auto Claude creates isolated workspaces for each task. Selecting the right base branch ensures
-                      your tasks start with the latest code from your main development line.
+                      {t('azureDevOpsSetup.whySelectBranchDescription')}
                     </p>
                   </div>
                 </div>
@@ -889,16 +1021,16 @@ export function AzureDevOpsSetupModal({
 
             <DialogFooter>
               {onSkip && (
-                <Button variant="outline" onClick={onSkip}>
-                  Skip for now
+                <Button variant="outline" onClick={onSkip} disabled={isCreatingBranch}>
+                  {t('azureDevOpsSetup.skipForNow')}
                 </Button>
               )}
               <Button
                 onClick={handleComplete}
-                disabled={!selectedBranch || isLoadingBranches}
+                disabled={isLoadingBranches || isCreatingBranch || (branches.length > 0 ? !selectedBranch : !manualBranchName.trim())}
               >
                 <CheckCircle2 className="mr-2 h-4 w-4" />
-                Complete Setup
+                {t('azureDevOpsSetup.completeSetup')}
               </Button>
             </DialogFooter>
           </>

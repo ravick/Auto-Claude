@@ -435,6 +435,7 @@ export const IPC_CHANNELS = {
   AZURE_DEVOPS_CREATE_REPO: 'azureDevOps:createRepo',
   AZURE_DEVOPS_LIST_PROJECTS_WITH_PAT: 'azureDevOps:listProjectsWithPat',
   AZURE_DEVOPS_LIST_REPOS_WITH_PAT: 'azureDevOps:listReposWithPat',
+  AZURE_DEVOPS_INITIALIZE_REPO: 'azureDevOps:initializeRepo',
 
   // Azure DevOps events (main -> renderer)
   AZURE_DEVOPS_INVESTIGATION_PROGRESS: 'azureDevOps:investigationProgress',
