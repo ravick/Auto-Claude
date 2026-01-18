@@ -456,6 +456,7 @@ export const IPC_CHANNELS = {
   EXTERNAL_SYNC_GET_CONFIG: 'externalSync:getConfig',
   EXTERNAL_SYNC_SAVE_CONFIG: 'externalSync:saveConfig',
   EXTERNAL_SYNC_MANUAL: 'externalSync:manualSync',  // Manual sync with PR linking
+  EXTERNAL_SYNC_FROM_ADO: 'externalSync:syncFromADO',  // Sync task data from Azure DevOps work item
 
   // Memory Infrastructure status (LadybugDB - no Docker required)
   MEMORY_STATUS: 'memory:status',

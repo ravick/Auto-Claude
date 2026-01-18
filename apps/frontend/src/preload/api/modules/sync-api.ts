@@ -14,8 +14,10 @@ export interface SyncAPI {
   // Sync configuration
   getSyncConfig: (projectId: string) => Promise<{ success: boolean; config?: ExternalSyncConfig; error?: string }>;
   saveSyncConfig: (projectId: string, config: ExternalSyncConfig) => Promise<{ success: boolean; error?: string }>;
-  // Manual sync
+  // Manual sync (to ADO)
   manualSync: (taskId: string) => Promise<{ success: boolean; results?: ExternalSyncResult[]; error?: string }>;
+  // Sync from ADO (pulls data from work item to local task)
+  syncFromADO: (taskId: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 /**
@@ -30,4 +32,7 @@ export const createSyncAPI = (): SyncAPI => ({
 
   manualSync: (taskId: string): Promise<{ success: boolean; results?: ExternalSyncResult[]; error?: string }> =>
     invokeIpc(IPC_CHANNELS.EXTERNAL_SYNC_MANUAL, taskId),
+
+  syncFromADO: (taskId: string): Promise<{ success: boolean; error?: string }> =>
+    invokeIpc(IPC_CHANNELS.EXTERNAL_SYNC_FROM_ADO, taskId),
 });

@@ -911,6 +911,202 @@ export async function linkPRToADOOnCreate(
 }
 
 /**
+ * Sync task data FROM Azure DevOps work item
+ * Fetches the latest data from ADO and updates the local task
+ */
+export async function syncFromADO(taskId: string): Promise<{ success: boolean; error?: string }> {
+  const { task, project } = findTaskAndProject(taskId);
+  if (!task || !project) {
+    return { success: false, error: 'Task or project not found' };
+  }
+
+  const metadata = task.metadata;
+  if (!metadata) {
+    return { success: false, error: 'Task has no metadata' };
+  }
+
+  // Only sync ADO tasks
+  if (metadata.sourceType !== 'azure_devops' || !metadata.azureDevOpsWorkItemId) {
+    return { success: false, error: 'Task is not linked to an Azure DevOps work item' };
+  }
+
+  const config = getAzureDevOpsConfig(project);
+  if (!config) {
+    return { success: false, error: 'Azure DevOps not configured for this project' };
+  }
+
+  try {
+    // Fetch work item from ADO
+    const workItem = await adoFetch<{
+      id: number;
+      fields: {
+        'System.Title'?: string;
+        'System.Description'?: string;
+        'System.WorkItemType'?: string;
+        'System.State'?: string;
+        'System.Tags'?: string;
+        'Microsoft.VSTS.TCM.ReproSteps'?: string;
+        'Microsoft.VSTS.Common.AcceptanceCriteria'?: string;
+        'System.AssignedTo'?: { displayName: string; uniqueName: string };
+      };
+    }>(config, `/workitems/${metadata.azureDevOpsWorkItemId}`);
+
+    const fields = workItem.fields;
+    const title = fields['System.Title'] || task.title;
+    const description = stripHtml(fields['System.Description'] || '');
+    const workItemType = fields['System.WorkItemType'] || 'Task';
+    const reproSteps = stripHtml(fields['Microsoft.VSTS.TCM.ReproSteps'] || '');
+    const acceptanceCriteria = stripHtml(fields['Microsoft.VSTS.Common.AcceptanceCriteria'] || '');
+    const tags = fields['System.Tags']?.split(';').map(t => t.trim()).filter(Boolean) || [];
+
+    // Build the TASK.md content in the standard format
+    const sections: string[] = [];
+    sections.push(`# ${title}`);
+    sections.push('');
+    sections.push(`**Work Item Type:** ${workItemType}`);
+    sections.push(`**ID:** ${metadata.azureDevOpsWorkItemId}`);
+    if (tags.length > 0) {
+      sections.push(`**Tags:** ${tags.join(', ')}`);
+    }
+    sections.push('');
+    sections.push('---');
+    sections.push('');
+    sections.push('## Description');
+    sections.push('');
+    sections.push(description || '*No description provided*');
+
+    if (reproSteps) {
+      sections.push('');
+      sections.push('## Repro Steps');
+      sections.push('');
+      sections.push(reproSteps);
+    }
+
+    if (acceptanceCriteria) {
+      sections.push('');
+      sections.push('## Acceptance Criteria');
+      sections.push('');
+      sections.push(acceptanceCriteria);
+    }
+
+    sections.push('');
+    sections.push('---');
+    sections.push('');
+    sections.push(`[View in Azure DevOps](${metadata.azureDevOpsUrl})`);
+
+    // Find the spec path - use specsPath from task if available
+    const specsBaseDir = project.autoBuildPath ? join(project.autoBuildPath, 'specs') : '.auto-claude/specs';
+    const specPath = task.specsPath || join(project.path, specsBaseDir, taskId);
+
+    if (!existsSync(specPath)) {
+      return { success: false, error: `Spec directory not found: ${specPath}` };
+    }
+
+    // Write TASK.md
+    const taskMdPath = join(specPath, 'TASK.md');
+    writeFileSync(taskMdPath, sections.join('\n'), 'utf-8');
+
+    // Update task_metadata.json
+    const metadataPath = join(specPath, 'task_metadata.json');
+    let taskMetadata: Record<string, unknown> = {};
+    if (existsSync(metadataPath)) {
+      try {
+        taskMetadata = JSON.parse(readFileSync(metadataPath, 'utf-8'));
+      } catch {
+        // Start fresh if parse fails
+      }
+    }
+
+    // Update fields from ADO
+    taskMetadata.azureDevOpsWorkItemType = workItemType;
+
+    writeFileSync(metadataPath, JSON.stringify(taskMetadata, null, 2), 'utf-8');
+
+    // Update requirements.json with the new description
+    const requirementsPath = join(specPath, 'requirements.json');
+    let requirements: Record<string, unknown> = {};
+    if (existsSync(requirementsPath)) {
+      try {
+        requirements = JSON.parse(readFileSync(requirementsPath, 'utf-8'));
+      } catch {
+        // Start fresh if parse fails
+      }
+    }
+
+    // Build full task description from ADO fields
+    const fullDescription: string[] = [];
+    if (description) {
+      fullDescription.push(description);
+    }
+    if (reproSteps) {
+      fullDescription.push('');
+      fullDescription.push('**Repro Steps:**');
+      fullDescription.push(reproSteps);
+    }
+    if (acceptanceCriteria) {
+      fullDescription.push('');
+      fullDescription.push('**Acceptance Criteria:**');
+      fullDescription.push(acceptanceCriteria);
+    }
+
+    requirements.task_description = fullDescription.join('\n') || description;
+    requirements.title = title;
+
+    writeFileSync(requirementsPath, JSON.stringify(requirements, null, 2), 'utf-8');
+
+    // Update implementation_plan.json title if it exists
+    const planPath = join(specPath, 'implementation_plan.json');
+    if (existsSync(planPath)) {
+      try {
+        const plan = JSON.parse(readFileSync(planPath, 'utf-8'));
+        plan.feature = title;
+        plan.title = title;
+        plan.description = requirements.task_description;
+        plan.updated_at = new Date().toISOString();
+        writeFileSync(planPath, JSON.stringify(plan, null, 2), 'utf-8');
+      } catch {
+        // Ignore plan update failures - not critical
+      }
+    }
+
+    // Invalidate cache so UI refreshes
+    projectStore.invalidateTasksCache(project.id);
+
+    debugLog(`Synced task ${taskId} from ADO work item #${metadata.azureDevOpsWorkItemId}`);
+
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    debugLog(`Failed to sync task ${taskId} from ADO:`, message);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Strip HTML tags from text
+ */
+function stripHtml(html: string): string {
+  if (!html) return '';
+  // Remove HTML tags
+  let text = html.replace(/<[^>]+>/g, '');
+  // Decode common HTML entities
+  text = text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, '/')
+    .replace(/&mdash;/g, '—')
+    .replace(/&ndash;/g, '–');
+  // Normalize whitespace but preserve line breaks (convert <br> and block elements to newlines first)
+  text = text.replace(/\s+/g, ' ').trim();
+  return text;
+}
+
+/**
  * Export the service as an object for consistent API
  */
 export const ExternalSyncService = {
@@ -919,4 +1115,5 @@ export const ExternalSyncService = {
   syncTaskStatus,
   manualSyncTask,
   linkPRToADOOnCreate,
+  syncFromADO,
 };

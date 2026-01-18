@@ -7,7 +7,7 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../../shared/constants';
 import { projectStore } from '../../project-store';
-import { ExternalSyncService, manualSyncTask } from '../../services/external-sync-service';
+import { ExternalSyncService, manualSyncTask, syncFromADO } from '../../services/external-sync-service';
 import type { ExternalSyncConfig, ExternalSyncResult } from '../../../shared/types/sync';
 
 /**
@@ -67,6 +67,20 @@ export function registerSyncSettingsHandlers(): void {
           return { success: false, results, error: errors };
         }
         return { success: true, results };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { success: false, error: message };
+      }
+    }
+  );
+
+  // Sync task data FROM Azure DevOps work item (updates local task with ADO data)
+  ipcMain.handle(
+    IPC_CHANNELS.EXTERNAL_SYNC_FROM_ADO,
+    async (_, taskId: string): Promise<{ success: boolean; error?: string }> => {
+      try {
+        const result = await syncFromADO(taskId);
+        return result;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return { success: false, error: message };

@@ -590,5 +590,10 @@ export const integrationMock = {
   manualSync: async () => ({
     success: false,
     error: 'Not available in browser mock'
+  }),
+
+  syncFromADO: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
   })
 };

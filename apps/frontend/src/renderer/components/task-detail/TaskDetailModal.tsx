@@ -29,12 +29,13 @@ import {
   Pencil,
   X,
   GitPullRequest,
-  RefreshCw
+  Upload,
+  Download
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../../lib/utils';
 import { calculateProgress } from '../../lib/utils';
-import { startTask, stopTask, submitReview, recoverStuckTask, deleteTask, useTaskStore } from '../../stores/task-store';
+import { startTask, stopTask, submitReview, recoverStuckTask, deleteTask, useTaskStore, loadTasks } from '../../stores/task-store';
 import { TASK_STATUS_LABELS } from '../../../shared/constants';
 import { TaskEditDialog } from '../TaskEditDialog';
 import { useTaskDetail } from './hooks/useTaskDetail';
@@ -79,7 +80,7 @@ const isFilesTabEnabled = () => {
 
 // Separate component to use hooks only when task exists
 function TaskDetailModalContent({ open, task, onOpenChange, onSwitchToTerminals, onOpenInbuiltTerminal }: { open: boolean; task: Task; onOpenChange: (open: boolean) => void; onSwitchToTerminals?: () => void; onOpenInbuiltTerminal?: (id: string, cwd: string) => void }) {
-  const { t } = useTranslation(['tasks']);
+  const { t } = useTranslation(['tasks', 'common']);
   const { toast } = useToast();
   const state = useTaskDetail({ task });
   const showFilesTab = isFilesTabEnabled();
@@ -88,7 +89,9 @@ function TaskDetailModalContent({ open, task, onOpenChange, onSwitchToTerminals,
   const totalSubtasks = task.subtasks.length;
 
   // Sync state for ADO tasks
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncingToADO, setIsSyncingToADO] = useState(false);
+  const [isSyncingFromADO, setIsSyncingFromADO] = useState(false);
+  const [showSyncFromADODialog, setShowSyncFromADODialog] = useState(false);
   const isADOTask = task.metadata?.sourceType === 'azure_devops' && task.metadata?.azureDevOpsWorkItemId;
 
   // Event Handlers
@@ -148,9 +151,9 @@ function TaskDetailModalContent({ open, task, onOpenChange, onSwitchToTerminals,
     state.setIsDeleting(false);
   };
 
-  const handleSync = async () => {
+  const handleSyncToADO = async () => {
     if (!isADOTask) return;
-    setIsSyncing(true);
+    setIsSyncingToADO(true);
     try {
       const result = await window.electronAPI.manualSync(task.id);
       if (result.success) {
@@ -175,7 +178,41 @@ function TaskDetailModalContent({ open, task, onOpenChange, onSwitchToTerminals,
         duration: 5000,
       });
     } finally {
-      setIsSyncing(false);
+      setIsSyncingToADO(false);
+    }
+  };
+
+  const handleSyncFromADO = async () => {
+    if (!isADOTask) return;
+    setIsSyncingFromADO(true);
+    setShowSyncFromADODialog(false);
+    try {
+      const result = await window.electronAPI.syncFromADO(task.id);
+      if (result.success) {
+        toast({
+          title: t('tasks:sync.fromADO.success'),
+          description: t('tasks:sync.fromADO.successDescription'),
+          duration: 3000,
+        });
+        // Refresh the task data in the store
+        await loadTasks(task.projectId);
+      } else {
+        toast({
+          title: t('tasks:sync.fromADO.failed'),
+          description: result.error || t('tasks:sync.fromADO.failedDescription'),
+          variant: 'destructive',
+          duration: 5000,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: t('tasks:sync.fromADO.failed'),
+        description: error instanceof Error ? error.message : t('tasks:sync.fromADO.failedDescription'),
+        variant: 'destructive',
+        duration: 5000,
+      });
+    } finally {
+      setIsSyncingFromADO(false);
     }
   };
 
@@ -621,20 +658,36 @@ function TaskDetailModalContent({ open, task, onOpenChange, onSwitchToTerminals,
                 {t('tasks:actions.deleteTask')}
               </Button>
               {isADOTask && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10"
-                  onClick={handleSync}
-                  disabled={isSyncing}
-                >
-                  {isSyncing ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  {t('tasks:actions.syncToADO')}
-                </Button>
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10"
+                    onClick={handleSyncToADO}
+                    disabled={isSyncingToADO || isSyncingFromADO}
+                  >
+                    {isSyncingToADO ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="mr-2 h-4 w-4" />
+                    )}
+                    {t('tasks:actions.syncToADO')}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-green-500 hover:bg-green-500/10"
+                    onClick={() => setShowSyncFromADODialog(true)}
+                    disabled={isSyncingToADO || isSyncingFromADO}
+                  >
+                    {isSyncingFromADO ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="mr-2 h-4 w-4" />
+                    )}
+                    {t('tasks:actions.syncFromADO')}
+                  </Button>
+                </>
               )}
               <div className="flex-1" />
               {renderPrimaryAction()}
@@ -698,6 +751,41 @@ function TaskDetailModalContent({ open, task, onOpenChange, onSwitchToTerminals,
                   Delete Permanently
                 </>
               )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Sync From ADO Confirmation Dialog */}
+      <AlertDialog open={showSyncFromADODialog} onOpenChange={setShowSyncFromADODialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-warning" />
+              {t('tasks:sync.fromADO.dialogTitle')}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="text-sm text-muted-foreground space-y-3">
+                <p>
+                  {t('tasks:sync.fromADO.dialogDescription')}
+                </p>
+                <p className="text-warning font-medium">
+                  {t('tasks:sync.fromADO.warningMessage')}
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleSyncFromADO();
+              }}
+              className="bg-green-600 text-white hover:bg-green-700"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              {t('tasks:sync.fromADO.confirmButton')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

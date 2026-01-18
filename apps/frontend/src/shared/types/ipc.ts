@@ -894,6 +894,7 @@ export interface ElectronAPI {
   getSyncConfig: (projectId: string) => Promise<{ success: boolean; config?: import('./sync').ExternalSyncConfig; error?: string }>;
   saveSyncConfig: (projectId: string, config: import('./sync').ExternalSyncConfig) => Promise<{ success: boolean; error?: string }>;
   manualSync: (taskId: string) => Promise<{ success: boolean; results?: import('./sync').ExternalSyncResult[]; error?: string }>;
+  syncFromADO: (taskId: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {
