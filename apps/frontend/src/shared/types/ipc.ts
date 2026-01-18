@@ -555,7 +555,7 @@ export interface ElectronAPI {
 
   // Azure DevOps Auth/Setup operations
   detectAzureDevOpsRepo: (projectPath: string) => Promise<IPCResult<AzureDevOpsRepoInfo>>;
-  validateAzureDevOpsPat: (pat: string, organization?: string) => Promise<IPCResult<{ valid: boolean; username?: string }>>;
+  validateAzureDevOpsPat: (pat: string, organization?: string) => Promise<IPCResult<{ valid: boolean; username?: string; error?: string }>>;
   listAzureDevOpsOrganizations: (pat: string) => Promise<IPCResult<AzureDevOpsOrganization[]>>;
   listAzureDevOpsProjectsWithPat: (pat: string, organization: string) => Promise<IPCResult<AzureDevOpsProject[]>>;
   listAzureDevOpsReposWithPat: (pat: string, organization: string, project: string) => Promise<IPCResult<AzureDevOpsRepository[]>>;

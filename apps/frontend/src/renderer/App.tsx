@@ -130,6 +130,7 @@ export function App() {
   const [settingsInitialSection, setSettingsInitialSection] = useState<AppSection | undefined>(undefined);
   const [settingsInitialProjectSection, setSettingsInitialProjectSection] = useState<ProjectSettingsSection | undefined>(undefined);
   const [activeView, setActiveView] = useState<SidebarView>('kanban');
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const [isOnboardingWizardOpen, setIsOnboardingWizardOpen] = useState(false);
   const [isRefreshingTasks, setIsRefreshingTasks] = useState(false);
 
@@ -747,13 +748,24 @@ export function App() {
         });
       } else if (settings.azureDevOpsPat && settings.azureDevOpsOrg) {
         // Azure DevOps setup
-        await window.electronAPI.updateProjectEnv(repositorySetupProject.id, {
+        console.debug('[App] Saving Azure DevOps settings:', {
+          projectId: repositorySetupProject.id,
+          org: settings.azureDevOpsOrg,
+          project: settings.azureDevOpsProject,
+          repo: settings.azureDevOpsRepo,
+          hasPat: !!settings.azureDevOpsPat
+        });
+        const result = await window.electronAPI.updateProjectEnv(repositorySetupProject.id, {
           azureDevOpsEnabled: true,
           azureDevOpsPat: settings.azureDevOpsPat,
           azureDevOpsOrganization: settings.azureDevOpsOrg,
           azureDevOpsProject: settings.azureDevOpsProject,
           azureDevOpsRepository: settings.azureDevOpsRepo
         });
+        console.debug('[App] Azure DevOps settings save result:', result);
+
+        // Trigger sidebar refresh to show Azure DevOps menu items
+        setSidebarRefreshKey((prev) => prev + 1);
       }
 
       // Update project settings with mainBranch
@@ -808,6 +820,7 @@ export function App() {
           onNewTaskClick={() => setIsNewTaskDialogOpen(true)}
           activeView={activeView}
           onViewChange={setActiveView}
+          refreshKey={sidebarRefreshKey}
         />
 
         {/* Main content */}

@@ -191,9 +191,11 @@ export function AzureDevOpsSetupModal({
   };
 
   // Detect repository from git remote
-  const detectRepository = async () => {
+  const detectRepository = async (patToken?: string, validatedOrg?: string) => {
     setIsLoadingRepo(true);
     setError(null);
+
+    const currentPat = patToken || pat;
 
     try {
       const result = await window.electronAPI.detectAzureDevOpsRepo(project.path);
@@ -202,15 +204,27 @@ export function AzureDevOpsSetupModal({
         setStep('repo-confirm');
       } else {
         // No remote detected, load orgs and show repo setup step
-        if (pat) {
-          await loadOrganizations(pat);
+        if (currentPat) {
+          // If organization was pre-validated, load its projects directly
+          if (validatedOrg) {
+            // Set single org in list and load projects
+            setOrganizations([{ accountId: '', accountName: validatedOrg, accountUri: '' }]);
+            await loadProjects(currentPat, validatedOrg);
+          } else {
+            await loadOrganizations(currentPat);
+          }
         }
         setStep('repo');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to detect repository');
-      if (pat) {
-        await loadOrganizations(pat);
+      if (currentPat) {
+        if (validatedOrg) {
+          setOrganizations([{ accountId: '', accountName: validatedOrg, accountUri: '' }]);
+          await loadProjects(currentPat, validatedOrg);
+        } else {
+          await loadOrganizations(currentPat);
+        }
       }
       setStep('repo');
     } finally {
@@ -254,9 +268,14 @@ export function AzureDevOpsSetupModal({
   };
 
   // Handle PAT auth success
-  const handleAdoAuthSuccess = async (patToken: string, user?: string) => {
+  const handleAdoAuthSuccess = async (patToken: string, user?: string, validatedOrg?: string) => {
     setPat(patToken);
     if (user) setUsername(user);
+
+    // If organization was validated, pre-select it
+    if (validatedOrg) {
+      setSelectedOrg(validatedOrg);
+    }
 
     // Check if Claude is already authenticated
     try {
@@ -266,7 +285,7 @@ export function AzureDevOpsSetupModal({
           (p) => p.id === profilesResult.data!.activeProfileId
         );
         if (activeProfile?.oauthToken || (activeProfile?.isDefault && activeProfile?.configDir)) {
-          await detectRepository();
+          await detectRepository(patToken, validatedOrg);
           return;
         }
       }
@@ -292,9 +311,20 @@ export function AzureDevOpsSetupModal({
 
   // Handle changing repository
   const handleChangeRepo = async () => {
-    if (pat) {
+    // If we already have an org selected (from PAT flow or detected repo), use it directly
+    // instead of trying to load organizations (which can fail due to auth issues)
+    const orgToUse = selectedOrg || detectedRepo?.organization;
+
+    if (orgToUse && pat) {
+      // Set the single org in the list and load its projects
+      setOrganizations([{ accountId: '', accountName: orgToUse, accountUri: '' }]);
+      setSelectedOrg(orgToUse);
+      await loadProjects(pat, orgToUse);
+    } else if (pat) {
+      // Fallback: try to load organizations (may fail)
       await loadOrganizations(pat);
     }
+
     setStep('repo');
   };
 
@@ -402,15 +432,49 @@ export function AzureDevOpsSetupModal({
 
   // Handle completion
   const handleComplete = () => {
-    if (pat && detectedRepo && selectedBranch) {
-      onComplete({
-        azureDevOpsPat: pat,
-        azureDevOpsOrg: detectedRepo.organization,
-        azureDevOpsProject: detectedRepo.project,
-        azureDevOpsRepo: detectedRepo.repository,
-        mainBranch: selectedBranch
-      });
+    console.debug('[AzureDevOpsSetup] handleComplete called', {
+      hasPat: !!pat,
+      hasDetectedRepo: !!detectedRepo,
+      hasSelectedBranch: !!selectedBranch,
+      detectedRepo,
+      selectedBranch
+    });
+
+    if (!pat) {
+      setError('PAT token is missing. Please go back and enter your PAT.');
+      return;
     }
+
+    if (!detectedRepo) {
+      // Try to use selected org/project/repo if detectedRepo is not set
+      if (selectedOrg && selectedProject && selectedRepo) {
+        console.debug('[AzureDevOpsSetup] Using manually selected repo instead of detectedRepo');
+        onComplete({
+          azureDevOpsPat: pat,
+          azureDevOpsOrg: selectedOrg,
+          azureDevOpsProject: selectedProject,
+          azureDevOpsRepo: selectedRepo,
+          mainBranch: selectedBranch || 'main'
+        });
+        return;
+      }
+      setError('Repository information is missing. Please go back and select a repository.');
+      return;
+    }
+
+    if (!selectedBranch) {
+      setError('Please select a branch.');
+      return;
+    }
+
+    console.debug('[AzureDevOpsSetup] Calling onComplete with settings');
+    onComplete({
+      azureDevOpsPat: pat,
+      azureDevOpsOrg: detectedRepo.organization,
+      azureDevOpsProject: detectedRepo.project,
+      azureDevOpsRepo: detectedRepo.repository,
+      mainBranch: selectedBranch
+    });
   };
 
   // Render step content
@@ -563,13 +627,20 @@ export function AzureDevOpsSetupModal({
                     </span>
                   </div>
 
-                  {/* Organization selection */}
+                  {/* Organization - show as read-only if we already have it from PAT flow */}
                   <div className="space-y-2">
                     <Label>{t('azureDevOpsSetup.organizationTitle')}</Label>
                     {isLoadingOrgs ? (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Loading organizations...
+                      </div>
+                    ) : selectedOrg && organizations.length === 1 ? (
+                      // Show read-only when org was provided in PAT flow
+                      <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 rounded-md border">
+                        <Building className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{selectedOrg}</span>
+                        <CheckCircle2 className="h-4 w-4 text-success ml-auto" />
                       </div>
                     ) : (
                       <Select value={selectedOrg || ''} onValueChange={handleOrgChange}>
@@ -578,7 +649,7 @@ export function AzureDevOpsSetupModal({
                         </SelectTrigger>
                         <SelectContent>
                           {organizations.map((org) => (
-                            <SelectItem key={org.accountId} value={org.accountName}>
+                            <SelectItem key={org.accountId || org.accountName} value={org.accountName}>
                               <div className="flex items-center gap-2">
                                 <Building className="h-4 w-4" />
                                 {org.accountName}
@@ -711,7 +782,7 @@ export function AzureDevOpsSetupModal({
                 </Button>
               )}
               {!repoAction && (
-                <Button variant="outline" onClick={detectRepository} disabled={isLoadingRepo}>
+                <Button variant="outline" onClick={() => detectRepository()} disabled={isLoadingRepo}>
                   {isLoadingRepo ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

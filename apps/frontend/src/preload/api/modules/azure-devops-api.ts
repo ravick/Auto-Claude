@@ -36,7 +36,7 @@ export interface WorkItemQueryOptions {
 export interface AzureDevOpsAPI {
   // Auth/Setup operations
   detectAzureDevOpsRepo: (projectPath: string) => Promise<IPCResult<AzureDevOpsRepoInfo>>;
-  validateAzureDevOpsPat: (pat: string, organization?: string) => Promise<IPCResult<{ valid: boolean; username?: string }>>;
+  validateAzureDevOpsPat: (pat: string, organization?: string) => Promise<IPCResult<{ valid: boolean; username?: string; error?: string }>>;
   listAzureDevOpsOrganizations: (pat: string) => Promise<IPCResult<AzureDevOpsOrganization[]>>;
   listAzureDevOpsProjectsWithPat: (pat: string, organization: string) => Promise<IPCResult<AzureDevOpsProject[]>>;
   listAzureDevOpsReposWithPat: (pat: string, organization: string, project: string) => Promise<IPCResult<AzureDevOpsRepository[]>>;
@@ -111,7 +111,7 @@ export const createAzureDevOpsAPI = (): AzureDevOpsAPI => ({
   detectAzureDevOpsRepo: (projectPath: string): Promise<IPCResult<AzureDevOpsRepoInfo>> =>
     invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_DETECT_REPO, projectPath),
 
-  validateAzureDevOpsPat: (pat: string, organization?: string): Promise<IPCResult<{ valid: boolean; username?: string }>> =>
+  validateAzureDevOpsPat: (pat: string, organization?: string): Promise<IPCResult<{ valid: boolean; username?: string; error?: string }>> =>
     invokeIpc(IPC_CHANNELS.AZURE_DEVOPS_VALIDATE_PAT, pat, organization),
 
   listAzureDevOpsOrganizations: (pat: string): Promise<IPCResult<AzureDevOpsOrganization[]>> =>

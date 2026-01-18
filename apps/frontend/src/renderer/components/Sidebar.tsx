@@ -62,6 +62,8 @@ interface SidebarProps {
   onNewTaskClick: () => void;
   activeView?: SidebarView;
   onViewChange?: (view: SidebarView) => void;
+  /** Increment this to force a refresh of the env config */
+  refreshKey?: number;
 }
 
 interface NavItem {
@@ -106,7 +108,8 @@ export function Sidebar({
   onSettingsClick,
   onNewTaskClick,
   activeView = 'kanban',
-  onViewChange
+  onViewChange,
+  refreshKey
 }: SidebarProps) {
   const { t } = useTranslation(['navigation', 'dialogs', 'common']);
   const projects = useProjectStore((state) => state.projects);
@@ -134,7 +137,7 @@ export function Sidebar({
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
 
-  // Load env config when project changes to check GitHub/GitLab enabled state
+  // Load env config when project changes or refreshKey changes
   useEffect(() => {
     const loadEnvConfig = async () => {
       if (selectedProject?.autoBuildPath) {
@@ -153,7 +156,7 @@ export function Sidebar({
       }
     };
     loadEnvConfig();
-  }, [selectedProject?.id, selectedProject?.autoBuildPath]);
+  }, [selectedProject?.id, selectedProject?.autoBuildPath, refreshKey]);
 
   // Compute visible nav items based on GitHub/GitLab/Azure DevOps enabled state
   const visibleNavItems = useMemo(() => {

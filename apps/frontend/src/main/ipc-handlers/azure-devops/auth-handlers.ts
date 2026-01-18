@@ -162,48 +162,154 @@ export function registerDetectAzureDevOpsRepo(): void {
 
 /**
  * Validate Azure DevOps PAT by testing it against the API
+ * If organization is provided, validates directly against that organization (better for orgs with conditional access)
+ * Otherwise, validates against the global profile API
  */
 export function registerValidateAzureDevOpsPat(): void {
   ipcMain.handle(
     IPC_CHANNELS.AZURE_DEVOPS_VALIDATE_PAT,
-    async (_event, pat: string, organization?: string): Promise<IPCResult<{ valid: boolean; username?: string }>> => {
-      debugLog('validateAzureDevOpsPat handler called', { organization: organization || 'auto-detect' });
+    async (_event, pat: string, organization?: string): Promise<IPCResult<{ valid: boolean; username?: string; error?: string }>> => {
+      debugLog('validateAzureDevOpsPat handler called', {
+        organization: organization || 'auto-detect',
+        patLength: pat?.length || 0
+      });
 
       if (!pat || pat.trim().length === 0) {
         return {
           success: true,
-          data: { valid: false }
+          data: { valid: false, error: 'PAT is required' }
         };
       }
 
+      const trimmedPat = pat.trim();
+      debugLog('PAT received', { length: trimmedPat.length, startsWithChar: trimmedPat.charAt(0) });
+
+      // If organization is provided, validate directly against the organization
+      // This works better for organizations with conditional access policies
+      if (organization && organization.trim()) {
+        const orgName = organization.trim();
+        debugLog('Validating PAT directly against organization:', orgName);
+
+        try {
+          // Try to access the organization's projects endpoint
+          // This is more reliable for orgs with conditional access policies
+          const orgUrl = `https://dev.azure.com/${orgName}/_apis/projects?$top=1&api-version=7.1`;
+          debugLog('Trying org-specific validation URL:', orgUrl);
+
+          const orgData = await adoFetchWithPat<{
+            count: number;
+            value?: Array<{ id: string; name: string }>;
+          }>(trimmedPat, orgUrl);
+
+          debugLog('Organization validation successful:', { projectCount: orgData.count });
+
+          // Now try to get the user profile (but don't fail if this doesn't work)
+          let username: string | undefined;
+          try {
+            const profileUrl = 'https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1';
+            const profileData = await adoFetchWithPat<{
+              displayName?: string;
+              publicAlias?: string;
+              emailAddress?: string;
+            }>(trimmedPat, profileUrl);
+            username = profileData.displayName || profileData.publicAlias || profileData.emailAddress;
+            debugLog('Profile fetch succeeded:', { username });
+          } catch (profileError) {
+            // Profile fetch failed, but org validation worked - that's OK
+            debugLog('Profile fetch failed (non-critical):', profileError instanceof Error ? profileError.message : profileError);
+          }
+
+          return {
+            success: true,
+            data: {
+              valid: true,
+              username
+            }
+          };
+        } catch (orgError) {
+          const orgErrorMsg = orgError instanceof Error ? orgError.message : 'Unknown error';
+          debugLog('Organization validation failed:', orgErrorMsg);
+
+          if (orgErrorMsg.includes('401') || orgErrorMsg.includes('Authentication failed') || orgErrorMsg.includes('Unauthorized')) {
+            return {
+              success: true,
+              data: {
+                valid: false,
+                error: `Authentication failed for organization "${orgName}". This could be due to:\n• Invalid PAT token\n• PAT doesn't have access to this organization\n• Organization requires web login first (try visiting https://${orgName}.visualstudio.com or https://dev.azure.com/${orgName} in your browser)`
+              }
+            };
+          }
+          if (orgErrorMsg.includes('403') || orgErrorMsg.includes('forbidden')) {
+            return {
+              success: true,
+              data: {
+                valid: false,
+                error: `Access forbidden for organization "${orgName}". Ensure your PAT has the required scopes (Code: Read & Write, Project and Team: Read).`
+              }
+            };
+          }
+          if (orgErrorMsg.includes('404') || orgErrorMsg.includes('not found')) {
+            return {
+              success: true,
+              data: {
+                valid: false,
+                error: `Organization "${orgName}" not found. Check the organization name is spelled correctly.\n\nYour organization URL should be: https://dev.azure.com/${orgName} or https://${orgName}.visualstudio.com`
+              }
+            };
+          }
+
+          return {
+            success: true,
+            data: {
+              valid: false,
+              error: `Cannot access organization "${orgName}": ${orgErrorMsg}`
+            }
+          };
+        }
+      }
+
+      // No organization provided - use the global profile API
       try {
-        // Try to get profile information to validate the PAT
-        // This uses the Azure DevOps accounts API
+        debugLog('No organization provided, using global profile API');
         const profileUrl = 'https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1';
 
         const profileData = await adoFetchWithPat<{
+          id?: string;
           displayName?: string;
           publicAlias?: string;
           emailAddress?: string;
-        }>(pat, profileUrl);
+        }>(trimmedPat, profileUrl);
 
         debugLog('PAT validated successfully:', {
           displayName: profileData.displayName,
           publicAlias: profileData.publicAlias
         });
 
+        const username = profileData.displayName || profileData.publicAlias || profileData.emailAddress;
+
         return {
           success: true,
           data: {
             valid: true,
-            username: profileData.displayName || profileData.publicAlias || profileData.emailAddress
+            username
           }
         };
       } catch (error) {
-        debugLog('PAT validation failed:', error instanceof Error ? error.message : error);
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        debugLog('PAT validation failed:', errorMsg);
+
+        // Return specific error message to help user diagnose the issue
+        let friendlyError = errorMsg;
+        if (errorMsg.includes('401') || errorMsg.includes('Authentication failed') || errorMsg.includes('Unauthorized')) {
+          friendlyError = 'Authentication failed. Please verify your PAT is correct.\n\nIf your organization uses conditional access policies, try:\n1. Entering your organization name in the field above\n2. Visiting your Azure DevOps portal in a browser first';
+        }
+
         return {
           success: true,
-          data: { valid: false }
+          data: {
+            valid: false,
+            error: friendlyError
+          }
         };
       }
     }
