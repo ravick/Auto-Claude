@@ -16,6 +16,8 @@
     "resume": "Reprendre",
     "archive": "Archiver",
     "delete": "Supprimer",
+    "deleteTask": "Supprimer la tâche",
+    "syncToADO": "Synchroniser vers ADO",
     "view": "Voir les détails",
     "viewPR": "Voir la PR",
     "moveTo": "Déplacer vers",
@@ -125,7 +127,14 @@
   },
   "metadata": {
     "severity": "sévérité",
-    "pullRequest": "Pull Request"
+    "pullRequest": "Pull Request",
+    "azureDevOpsWorkItem": "Élément de travail Azure DevOps"
+  },
+  "sync": {
+    "success": "Synchronisation réussie",
+    "successDescription": "Le statut de la tâche et les liens PR ont été synchronisés vers Azure DevOps.",
+    "failed": "Échec de la synchronisation",
+    "failedDescription": "Échec de la synchronisation de la tâche vers Azure DevOps. Veuillez réessayer."
   },
   "images": {
     "removeImageAriaLabel": "Supprimer l'image {{filename}}",

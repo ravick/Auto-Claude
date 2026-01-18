@@ -5,7 +5,7 @@
 
 import { IPC_CHANNELS } from '../../../shared/constants';
 import { invokeIpc } from './ipc-utils';
-import type { ExternalSyncConfig, ADOWorkItemType, ADOWorkItemState } from '../../../shared/types/sync';
+import type { ExternalSyncConfig, ExternalSyncResult } from '../../../shared/types/sync';
 
 /**
  * External Sync API interface
@@ -14,6 +14,8 @@ export interface SyncAPI {
   // Sync configuration
   getSyncConfig: (projectId: string) => Promise<{ success: boolean; config?: ExternalSyncConfig; error?: string }>;
   saveSyncConfig: (projectId: string, config: ExternalSyncConfig) => Promise<{ success: boolean; error?: string }>;
+  // Manual sync
+  manualSync: (taskId: string) => Promise<{ success: boolean; results?: ExternalSyncResult[]; error?: string }>;
 }
 
 /**
@@ -25,4 +27,7 @@ export const createSyncAPI = (): SyncAPI => ({
 
   saveSyncConfig: (projectId: string, config: ExternalSyncConfig): Promise<{ success: boolean; error?: string }> =>
     invokeIpc(IPC_CHANNELS.EXTERNAL_SYNC_SAVE_CONFIG, projectId, config),
+
+  manualSync: (taskId: string): Promise<{ success: boolean; results?: ExternalSyncResult[]; error?: string }> =>
+    invokeIpc(IPC_CHANNELS.EXTERNAL_SYNC_MANUAL, taskId),
 });

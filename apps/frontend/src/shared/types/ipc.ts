@@ -893,6 +893,7 @@ export interface ElectronAPI {
   // External Sync operations (sync task status to GitHub/Azure DevOps)
   getSyncConfig: (projectId: string) => Promise<{ success: boolean; config?: import('./sync').ExternalSyncConfig; error?: string }>;
   saveSyncConfig: (projectId: string, config: import('./sync').ExternalSyncConfig) => Promise<{ success: boolean; error?: string }>;
+  manualSync: (taskId: string) => Promise<{ success: boolean; results?: import('./sync').ExternalSyncResult[]; error?: string }>;
 }
 
 declare global {

@@ -28,8 +28,10 @@ import {
   AlertTriangle,
   Pencil,
   X,
-  GitPullRequest
+  GitPullRequest,
+  RefreshCw
 } from 'lucide-react';
+import { useState } from 'react';
 import { cn } from '../../lib/utils';
 import { calculateProgress } from '../../lib/utils';
 import { startTask, stopTask, submitReview, recoverStuckTask, deleteTask, useTaskStore } from '../../stores/task-store';
@@ -84,6 +86,10 @@ function TaskDetailModalContent({ open, task, onOpenChange, onSwitchToTerminals,
   const progressPercent = calculateProgress(task.subtasks);
   const completedSubtasks = task.subtasks.filter(s => s.status === 'completed').length;
   const totalSubtasks = task.subtasks.length;
+
+  // Sync state for ADO tasks
+  const [isSyncing, setIsSyncing] = useState(false);
+  const isADOTask = task.metadata?.sourceType === 'azure_devops' && task.metadata?.azureDevOpsWorkItemId;
 
   // Event Handlers
   const handleStartStop = async () => {
@@ -140,6 +146,37 @@ function TaskDetailModalContent({ open, task, onOpenChange, onSwitchToTerminals,
       state.setDeleteError(result.error || 'Failed to delete task');
     }
     state.setIsDeleting(false);
+  };
+
+  const handleSync = async () => {
+    if (!isADOTask) return;
+    setIsSyncing(true);
+    try {
+      const result = await window.electronAPI.manualSync(task.id);
+      if (result.success) {
+        toast({
+          title: t('tasks:sync.success'),
+          description: t('tasks:sync.successDescription'),
+          duration: 3000,
+        });
+      } else {
+        toast({
+          title: t('tasks:sync.failed'),
+          description: result.error || t('tasks:sync.failedDescription'),
+          variant: 'destructive',
+          duration: 5000,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: t('tasks:sync.failed'),
+        description: error instanceof Error ? error.message : t('tasks:sync.failedDescription'),
+        variant: 'destructive',
+        duration: 5000,
+      });
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleMerge = async () => {
@@ -581,8 +618,24 @@ function TaskDetailModalContent({ open, task, onOpenChange, onSwitchToTerminals,
                 disabled={state.isRunning && !state.isStuck}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
-                Delete Task
+                {t('tasks:actions.deleteTask')}
               </Button>
+              {isADOTask && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10"
+                  onClick={handleSync}
+                  disabled={isSyncing}
+                >
+                  {isSyncing ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  {t('tasks:actions.syncToADO')}
+                </Button>
+              )}
               <div className="flex-1" />
               {renderPrimaryAction()}
               <Button variant="outline" onClick={handleClose}>

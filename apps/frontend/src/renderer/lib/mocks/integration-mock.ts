@@ -585,5 +585,10 @@ export const integrationMock = {
 
   saveSyncConfig: async () => ({
     success: true
+  }),
+
+  manualSync: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
   })
 };

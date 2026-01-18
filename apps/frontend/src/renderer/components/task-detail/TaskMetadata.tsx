@@ -205,6 +205,24 @@ export function TaskMetadata({ task }: TaskMetadataProps) {
             </div>
           )}
 
+          {/* Azure DevOps Work Item */}
+          {task.metadata.azureDevOpsUrl && (
+            <div>
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                <ListChecks className="h-3 w-3 text-blue-400" />
+                {t('tasks:metadata.azureDevOpsWorkItem')}
+              </h3>
+              <button
+                type="button"
+                onClick={() => window.electronAPI.openExternal(task.metadata!.azureDevOpsUrl!)}
+                className="text-sm text-info hover:underline flex items-center gap-1.5 bg-transparent border-none cursor-pointer p-0 text-left"
+              >
+                {task.metadata.azureDevOpsUrl}
+                <ExternalLink className="h-3 w-3" />
+              </button>
+            </div>
+          )}
+
           {/* Pull Request */}
           {task.metadata.prUrl && (
             <div>

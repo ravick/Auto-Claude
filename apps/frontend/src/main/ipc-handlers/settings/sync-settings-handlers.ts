@@ -7,8 +7,8 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../../shared/constants';
 import { projectStore } from '../../project-store';
-import { ExternalSyncService } from '../../services/external-sync-service';
-import type { ExternalSyncConfig } from '../../../shared/types/sync';
+import { ExternalSyncService, manualSyncTask } from '../../services/external-sync-service';
+import type { ExternalSyncConfig, ExternalSyncResult } from '../../../shared/types/sync';
 
 /**
  * Register sync settings IPC handlers
@@ -48,6 +48,25 @@ export function registerSyncSettingsHandlers(): void {
           return { success: false, error: 'Failed to save sync configuration' };
         }
         return { success: true };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { success: false, error: message };
+      }
+    }
+  );
+
+  // Manual sync for a specific task (syncs status and links PRs)
+  ipcMain.handle(
+    IPC_CHANNELS.EXTERNAL_SYNC_MANUAL,
+    async (_, taskId: string): Promise<{ success: boolean; results?: ExternalSyncResult[]; error?: string }> => {
+      try {
+        const results = await manualSyncTask(taskId);
+        const hasErrors = results.some(r => !r.success);
+        if (hasErrors) {
+          const errors = results.filter(r => !r.success).map(r => r.error?.message).join('; ');
+          return { success: false, results, error: errors };
+        }
+        return { success: true, results };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return { success: false, error: message };

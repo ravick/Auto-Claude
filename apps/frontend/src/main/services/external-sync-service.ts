@@ -19,6 +19,7 @@ import type {
 import { mapStatusToGitHub, mapStatusToADO } from '../../shared/types/sync';
 import { getGitHubConfig, githubFetch, normalizeRepoReference } from '../ipc-handlers/github/utils';
 import { getAzureDevOpsConfig, adoFetch } from '../ipc-handlers/azure-devops/utils';
+import { projectStore } from '../project-store';
 
 // Debug logging
 const DEBUG = process.env.DEBUG === 'true' || process.env.NODE_ENV === 'development';
@@ -423,10 +424,317 @@ export async function syncTaskStatus(
 }
 
 /**
+ * Link a Pull Request to an Azure DevOps work item
+ */
+async function linkPRToADOWorkItem(
+  project: Project,
+  workItemId: number,
+  prUrl: string
+): Promise<ExternalSyncResult> {
+  const timestamp = new Date().toISOString();
+
+  const config = getAzureDevOpsConfig(project);
+  if (!config) {
+    return {
+      success: false,
+      taskId: '',
+      externalId: workItemId,
+      externalType: 'azure_devops',
+      action: 'no_action',
+      error: {
+        code: 'NOT_CONFIGURED',
+        message: 'Azure DevOps not configured for this project',
+        retryable: false,
+      },
+      timestamp,
+    };
+  }
+
+  try {
+    // First, get the current work item to check existing links
+    const workItem = await adoFetch<{ relations?: Array<{ url: string; rel: string }> }>(
+      config,
+      `/workitems/${workItemId}?$expand=relations`
+    );
+
+    // Check if PR is already linked
+    const existingLink = workItem.relations?.find(r =>
+      r.rel === 'ArtifactLink' && r.url.includes(prUrl.replace('https://dev.azure.com/', 'vstfs:///Git/PullRequestId/'))
+    );
+
+    if (existingLink) {
+      debugLog(`PR already linked to work item #${workItemId}`);
+      return {
+        success: true,
+        taskId: '',
+        externalId: workItemId,
+        externalType: 'azure_devops',
+        action: 'no_action',
+        timestamp,
+      };
+    }
+
+    // Extract PR ID and repository info from URL
+    // URL format: https://dev.azure.com/{org}/{project}/_git/{repo}/pullrequest/{prId}
+    const prMatch = prUrl.match(/\/pullrequest\/(\d+)/);
+    if (!prMatch) {
+      return {
+        success: false,
+        taskId: '',
+        externalId: workItemId,
+        externalType: 'azure_devops',
+        action: 'no_action',
+        error: {
+          code: 'INVALID_PR_URL',
+          message: 'Could not parse PR ID from URL',
+          retryable: false,
+        },
+        timestamp,
+      };
+    }
+
+    // Get project ID and repository ID for the artifact link
+    // First, get the project info
+    const projectInfo = await adoFetch<{ id: string }>(
+      config,
+      `/_apis/projects/${config.project}`
+    );
+
+    // Get repository info - extract repo name from PR URL or use config
+    const repoMatch = prUrl.match(/_git\/([^/]+)\/pullrequest/);
+    const repoName = repoMatch ? repoMatch[1] : config.repository;
+
+    if (!repoName) {
+      return {
+        success: false,
+        taskId: '',
+        externalId: workItemId,
+        externalType: 'azure_devops',
+        action: 'no_action',
+        error: {
+          code: 'NO_REPOSITORY',
+          message: 'Could not determine repository name',
+          retryable: false,
+        },
+        timestamp,
+      };
+    }
+
+    const repoInfo = await adoFetch<{ id: string }>(
+      config,
+      `/git/repositories/${repoName}`
+    );
+
+    // Build the artifact link URL for ADO
+    // Format: vstfs:///Git/PullRequestId/{projectId}%2F{repoId}%2F{prId}
+    const artifactUrl = `vstfs:///Git/PullRequestId/${projectInfo.id}%2F${repoInfo.id}%2F${prMatch[1]}`;
+
+    // Add the PR link to the work item
+    const patchDocument = [
+      {
+        op: 'add',
+        path: '/relations/-',
+        value: {
+          rel: 'ArtifactLink',
+          url: artifactUrl,
+          attributes: {
+            name: 'Pull Request',
+          },
+        },
+      },
+      {
+        op: 'add',
+        path: '/fields/System.History',
+        value: `<strong>Auto-Claude Agent:</strong> Linked Pull Request: <a href="${prUrl}">${prUrl}</a>`,
+      },
+    ];
+
+    await adoFetch(
+      config,
+      `/workitems/${workItemId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json-patch+json',
+        },
+        body: JSON.stringify(patchDocument),
+      }
+    );
+
+    debugLog(`Linked PR to ADO work item #${workItemId}`);
+
+    return {
+      success: true,
+      taskId: '',
+      externalId: workItemId,
+      externalType: 'azure_devops',
+      action: 'state_update',
+      newState: 'PR Linked',
+      timestamp,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    debugLog(`Failed to link PR to ADO work item #${workItemId}:`, message);
+
+    return {
+      success: false,
+      taskId: '',
+      externalId: workItemId,
+      externalType: 'azure_devops',
+      action: 'state_update',
+      error: {
+        code: 'LINK_FAILED',
+        message,
+        retryable: true,
+      },
+      timestamp,
+    };
+  }
+}
+
+/**
+ * Find task and project by task ID
+ */
+function findTaskAndProject(taskId: string): { task: Task | null; project: Project | null } {
+  const projects = projectStore.getProjects();
+  for (const project of projects) {
+    const tasks = projectStore.getTasks(project.id);
+    const task = tasks.find((t: Task) => t.id === taskId);
+    if (task) {
+      return { task, project };
+    }
+  }
+  return { task: null, project: null };
+}
+
+/**
+ * Manual sync for a specific task
+ * - Syncs current status to external system
+ * - Links any PRs to ADO work item
+ */
+export async function manualSyncTask(taskId: string): Promise<ExternalSyncResult[]> {
+  const results: ExternalSyncResult[] = [];
+
+  const { task, project } = findTaskAndProject(taskId);
+  if (!task || !project) {
+    const timestamp = new Date().toISOString();
+    return [{
+      success: false,
+      taskId,
+      externalId: 0,
+      externalType: 'azure_devops',
+      action: 'no_action',
+      error: {
+        code: 'NOT_FOUND',
+        message: 'Task or project not found',
+        retryable: false,
+      },
+      timestamp,
+    }];
+  }
+
+  const metadata = task.metadata;
+  if (!metadata) {
+    const timestamp = new Date().toISOString();
+    return [{
+      success: false,
+      taskId,
+      externalId: 0,
+      externalType: 'azure_devops',
+      action: 'no_action',
+      error: {
+        code: 'NO_METADATA',
+        message: 'Task has no metadata',
+        retryable: false,
+      },
+      timestamp,
+    }];
+  }
+
+  // Only sync ADO tasks for now
+  if (metadata.sourceType !== 'azure_devops' || !metadata.azureDevOpsWorkItemId) {
+    const timestamp = new Date().toISOString();
+    return [{
+      success: false,
+      taskId,
+      externalId: 0,
+      externalType: 'azure_devops',
+      action: 'no_action',
+      error: {
+        code: 'NOT_ADO_TASK',
+        message: 'Task is not linked to an Azure DevOps work item',
+        retryable: false,
+      },
+      timestamp,
+    }];
+  }
+
+  // Load sync configuration
+  const syncConfig = loadSyncConfig(project);
+
+  // Sync status (even if sync is disabled, manual sync should work)
+  try {
+    const statusResult = await syncToAzureDevOps(
+      project,
+      task,
+      undefined, // No old status for manual sync
+      task.status,
+      syncConfig.adoStatusMapping
+    );
+    results.push(statusResult);
+  } catch (error) {
+    console.error('[ExternalSync] Manual sync status failed:', error);
+  }
+
+  // Link PR if present
+  if (metadata.prUrl) {
+    try {
+      const prResult = await linkPRToADOWorkItem(
+        project,
+        metadata.azureDevOpsWorkItemId,
+        metadata.prUrl
+      );
+      prResult.taskId = taskId;
+      results.push(prResult);
+    } catch (error) {
+      console.error('[ExternalSync] Manual sync PR link failed:', error);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Link PR to ADO work item when PR is created
+ * Called automatically after PR creation
+ */
+export async function linkPRToADOOnCreate(
+  project: Project,
+  task: Task,
+  prUrl: string
+): Promise<ExternalSyncResult | null> {
+  const metadata = task.metadata;
+  if (!metadata?.azureDevOpsWorkItemId || metadata.sourceType !== 'azure_devops') {
+    return null;
+  }
+
+  try {
+    const result = await linkPRToADOWorkItem(project, metadata.azureDevOpsWorkItemId, prUrl);
+    result.taskId = task.id;
+    return result;
+  } catch (error) {
+    console.error('[ExternalSync] Failed to link PR on create:', error);
+    return null;
+  }
+}
+
+/**
  * Export the service as an object for consistent API
  */
 export const ExternalSyncService = {
   loadConfig: loadSyncConfig,
   saveConfig: saveSyncConfig,
   syncTaskStatus,
+  manualSyncTask,
+  linkPRToADOOnCreate,
 };

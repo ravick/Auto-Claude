@@ -455,6 +455,7 @@ export const IPC_CHANNELS = {
   // External Sync configuration
   EXTERNAL_SYNC_GET_CONFIG: 'externalSync:getConfig',
   EXTERNAL_SYNC_SAVE_CONFIG: 'externalSync:saveConfig',
+  EXTERNAL_SYNC_MANUAL: 'externalSync:manualSync',  // Manual sync with PR linking
 
   // Memory Infrastructure status (LadybugDB - no Docker required)
   MEMORY_STATUS: 'memory:status',

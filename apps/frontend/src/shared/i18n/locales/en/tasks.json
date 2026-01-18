@@ -16,6 +16,8 @@
     "resume": "Resume",
     "archive": "Archive",
     "delete": "Delete",
+    "deleteTask": "Delete Task",
+    "syncToADO": "Sync to ADO",
     "view": "View Details",
     "viewPR": "View PR",
     "moveTo": "Move to",
@@ -125,7 +127,14 @@
   },
   "metadata": {
     "severity": "severity",
-    "pullRequest": "Pull Request"
+    "pullRequest": "Pull Request",
+    "azureDevOpsWorkItem": "Azure DevOps Work Item"
+  },
+  "sync": {
+    "success": "Sync Successful",
+    "successDescription": "Task status and PR links have been synced to Azure DevOps.",
+    "failed": "Sync Failed",
+    "failedDescription": "Failed to sync task to Azure DevOps. Please try again."
   },
   "images": {
     "removeImageAriaLabel": "Remove image {{filename}}",
