@@ -287,6 +287,15 @@ app.whenReady().then(() => {
       filePath = pathname;
     }
 
+    // Convert Unix-style drive letter paths to Windows paths
+    // Git Bash/MSYS uses paths like /w/Repos/... to represent W:\Repos\...
+    // Pattern: /[single-letter]/path -> [LETTER]:/path
+    if (process.platform === 'win32' && /^\/[a-zA-Z]\//.test(filePath)) {
+      const driveLetter = filePath[1].toUpperCase();
+      filePath = driveLetter + ':' + filePath.slice(2);
+      console.log('[local-file protocol] Converted Unix-style path to Windows:', filePath);
+    }
+
     console.log('[local-file protocol] Serving file:', filePath);
 
     // Security: Only allow serving files from .auto-claude directories
