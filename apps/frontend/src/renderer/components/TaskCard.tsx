@@ -28,7 +28,7 @@ import {
   TASK_STATUS_COLUMNS,
   TASK_STATUS_LABELS
 } from '../../shared/constants';
-import { startTask, stopTask, checkTaskRunning, recoverStuckTask, isIncompleteHumanReview, archiveTasks } from '../stores/task-store';
+import { startTask, stopTask, checkTaskRunning, recoverStuckTask, reportStuckTask, isIncompleteHumanReview, archiveTasks } from '../stores/task-store';
 import type { Task, TaskCategory, ReviewReason, TaskStatus } from '../../shared/types';
 
 // Category icon mapping
@@ -103,6 +103,8 @@ export const TaskCard = memo(function TaskCard({ task, onClick, onStatusChange }
     timeout: null,
     interval: null
   });
+  // Track if we've already reported this stuck state to ADO to avoid duplicate reports
+  const stuckReportedRef = useRef(false);
 
   const isRunning = task.status === 'in_progress';
   const executionPhase = task.executionProgress?.phase;
@@ -219,6 +221,38 @@ export const TaskCard = memo(function TaskCard({ task, onClick, onStatusChange }
       if (debounceTimeout) clearTimeout(debounceTimeout);
     };
   }, [isRunning, performStuckCheck]);
+
+  // Report stuck status to ADO when task becomes stuck (only once per stuck detection)
+  useEffect(() => {
+    if (isStuck && !stuckReportedRef.current) {
+      // Mark as reported to avoid duplicate reports
+      stuckReportedRef.current = true;
+
+      // Build context for the stuck report
+      const context: { phase?: string; completedSubtasks?: number; totalSubtasks?: number; currentSubtask?: string } = {};
+      if (task.executionProgress?.phase) {
+        context.phase = task.executionProgress.phase;
+      }
+      if (task.subtasks && task.subtasks.length > 0) {
+        const completedCount = task.subtasks.filter(s => s.status === 'completed').length;
+        context.completedSubtasks = completedCount;
+        context.totalSubtasks = task.subtasks.length;
+        // Find current in-progress subtask
+        const currentSubtask = task.subtasks.find(s => s.status === 'in_progress');
+        if (currentSubtask) {
+          context.currentSubtask = currentSubtask.title;
+        }
+      }
+
+      // Fire-and-forget: report to ADO
+      reportStuckTask(task.id, context).catch(err => {
+        console.warn('[TaskCard] Failed to report stuck task to ADO:', err);
+      });
+    } else if (!isStuck) {
+      // Reset the reported flag when task is no longer stuck
+      stuckReportedRef.current = false;
+    }
+  }, [isStuck, task.id, task.executionProgress?.phase, task.subtasks]);
 
   const handleStartStop = (e: React.MouseEvent) => {
     e.stopPropagation();

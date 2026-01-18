@@ -41,7 +41,7 @@ export interface SyncContext {
     currentSubtask?: string;
   };
   /** Reason for the status change (e.g., 'task_started', 'phase_complete', 'agent_exit') */
-  reason?: 'task_started' | 'phase_transition' | 'agent_exit_success' | 'agent_exit_failure' | 'manual_update';
+  reason?: 'task_started' | 'phase_transition' | 'agent_exit_success' | 'agent_exit_failure' | 'manual_update' | 'task_stuck';
   /** Exit code if agent process exited */
   exitCode?: number | null;
 }
@@ -163,6 +163,9 @@ function generateSyncComment(
         break;
       case 'agent_exit_failure':
         parts.push(`<br/>⚠️ Agent process exited with issues (code: ${context.exitCode ?? 'unknown'}) - needs attention`);
+        break;
+      case 'task_stuck':
+        parts.push('<br/>⚠️ Task appears stuck - marked as running but no active process found. May need manual intervention or recovery.');
         break;
     }
   }
@@ -1168,6 +1171,108 @@ function stripHtml(html: string): string {
 }
 
 /**
+ * Report a task as stuck to Azure DevOps
+ * This posts a discussion comment to the work item without changing its state
+ *
+ * @param taskId - The task ID to report as stuck
+ * @param context - Optional additional context (phase, progress, etc.)
+ * @returns Result of the sync operation
+ */
+export async function reportStuckTaskToADO(
+  taskId: string,
+  context?: Omit<SyncContext, 'reason'>
+): Promise<ExternalSyncResult | null> {
+  const { task, project } = findTaskAndProject(taskId);
+  if (!task || !project) {
+    debugLog(`Task ${taskId} not found for stuck reporting`);
+    return null;
+  }
+
+  const metadata = task.metadata;
+  if (!metadata) {
+    debugLog(`Task ${taskId} has no metadata`);
+    return null;
+  }
+
+  // Only report to ADO for ADO-sourced tasks
+  if (metadata.sourceType !== 'azure_devops' || !metadata.azureDevOpsWorkItemId) {
+    debugLog(`Task ${taskId} is not linked to ADO`);
+    return null;
+  }
+
+  const config = getAzureDevOpsConfig(project);
+  if (!config) {
+    debugLog(`ADO not configured for project ${project.id}`);
+    return null;
+  }
+
+  const workItemId = metadata.azureDevOpsWorkItemId;
+  const timestamp = new Date().toISOString();
+
+  // Generate stuck comment - use current ADO state (don't change it)
+  const syncContext: SyncContext = {
+    ...context,
+    reason: 'task_stuck',
+  };
+
+  // Build the stuck notification comment
+  const discussionComment = generateSyncComment(null, 'Active', syncContext);
+
+  // Post ONLY a comment (using System.History), do NOT change the state
+  // This ensures the work item stays in whatever state it was in while
+  // still notifying about the stuck issue
+  const patchDocument = [
+    {
+      op: 'add',
+      path: '/fields/System.History',
+      value: discussionComment,
+    },
+  ];
+
+  try {
+    await adoFetch(
+      config,
+      `/workitems/${workItemId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json-patch+json',
+        },
+        body: JSON.stringify(patchDocument),
+      }
+    );
+
+    debugLog(`Posted stuck notification to ADO work item #${workItemId}`);
+
+    return {
+      success: true,
+      taskId,
+      externalId: workItemId,
+      externalType: 'azure_devops',
+      action: 'comment_added',
+      timestamp,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    debugLog(`Failed to post stuck notification to ADO work item #${workItemId}:`, message);
+
+    return {
+      success: false,
+      taskId,
+      externalId: workItemId,
+      externalType: 'azure_devops',
+      action: 'comment_added',
+      error: {
+        code: 'POST_FAILED',
+        message,
+        retryable: true,
+      },
+      timestamp,
+    };
+  }
+}
+
+/**
  * Export the service as an object for consistent API
  */
 export const ExternalSyncService = {
@@ -1177,4 +1282,5 @@ export const ExternalSyncService = {
   manualSyncTask,
   linkPRToADOOnCreate,
   syncFromADO,
+  reportStuckTaskToADO,
 };

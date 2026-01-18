@@ -74,6 +74,11 @@ export const taskMock = {
 
   checkTaskRunning: async () => ({ success: true, data: false }),
 
+  reportStuckTask: async () => ({
+    success: true,
+    data: { reported: false }  // Mock: not linked to ADO
+  }),
+
   // Task logs operations
   getTaskLogs: async () => ({
     success: true,

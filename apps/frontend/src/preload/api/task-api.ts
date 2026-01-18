@@ -49,6 +49,10 @@ export interface TaskAPI {
     options?: import('../../shared/types').TaskRecoveryOptions
   ) => Promise<IPCResult<TaskRecoveryResult>>;
   checkTaskRunning: (taskId: string) => Promise<IPCResult<boolean>>;
+  reportStuckTask: (
+    taskId: string,
+    context?: { phase?: string; completedSubtasks?: number; totalSubtasks?: number; currentSubtask?: string }
+  ) => Promise<IPCResult<{ reported: boolean; externalId?: number }>>;
 
   // Workspace Management (for human review)
   getWorktreeStatus: (taskId: string) => Promise<IPCResult<import('../../shared/types').WorktreeStatus>>;
@@ -134,6 +138,12 @@ export const createTaskAPI = (): TaskAPI => ({
 
   checkTaskRunning: (taskId: string): Promise<IPCResult<boolean>> =>
     ipcRenderer.invoke(IPC_CHANNELS.TASK_CHECK_RUNNING, taskId),
+
+  reportStuckTask: (
+    taskId: string,
+    context?: { phase?: string; completedSubtasks?: number; totalSubtasks?: number; currentSubtask?: string }
+  ): Promise<IPCResult<{ reported: boolean; externalId?: number }>> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TASK_REPORT_STUCK, taskId, context),
 
   // Workspace Management
   getWorktreeStatus: (taskId: string): Promise<IPCResult<import('../../shared/types').WorktreeStatus>> =>

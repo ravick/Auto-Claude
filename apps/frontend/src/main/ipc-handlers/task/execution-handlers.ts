@@ -1192,4 +1192,66 @@ export function registerTaskExecutionHandlers(
       }
     }
   );
+
+  /**
+   * Report a stuck task to external systems (Azure DevOps)
+   * This is called from the renderer when a task is detected as stuck
+   * (status says in_progress but no process is running)
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.TASK_REPORT_STUCK,
+    async (
+      _,
+      taskId: string,
+      context?: { phase?: string; completedSubtasks?: number; totalSubtasks?: number; currentSubtask?: string }
+    ): Promise<IPCResult<{ reported: boolean; externalId?: number }>> => {
+      try {
+        // Build sync context from provided context
+        const syncContext: Omit<SyncContext, 'reason'> = {};
+        if (context?.phase) {
+          syncContext.phase = context.phase as SyncContext['phase'];
+        }
+        if (context?.completedSubtasks !== undefined || context?.totalSubtasks !== undefined || context?.currentSubtask) {
+          syncContext.progress = {
+            completedSubtasks: context.completedSubtasks,
+            totalSubtasks: context.totalSubtasks,
+            currentSubtask: context.currentSubtask,
+          };
+        }
+
+        // Report stuck task to ADO
+        const result = await ExternalSyncService.reportStuckTaskToADO(taskId, syncContext);
+
+        if (!result) {
+          // Task is not linked to ADO or ADO not configured - this is not an error
+          return {
+            success: true,
+            data: { reported: false },
+          };
+        }
+
+        if (result.success) {
+          return {
+            success: true,
+            data: {
+              reported: true,
+              externalId: result.externalId as number,
+            },
+          };
+        } else {
+          console.warn('[TASK_REPORT_STUCK] Failed to report stuck task to ADO:', result.error?.message);
+          return {
+            success: false,
+            error: result.error?.message || 'Failed to report stuck task',
+          };
+        }
+      } catch (error) {
+        console.error('[TASK_REPORT_STUCK] Error reporting stuck task:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to report stuck task',
+        };
+      }
+    }
+  );
 }
