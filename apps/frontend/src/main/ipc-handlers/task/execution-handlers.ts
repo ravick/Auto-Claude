@@ -791,7 +791,8 @@ export function registerTaskExecutionHandlers(
 
         // Fire-and-forget: Sync status to external systems (GitHub, Azure DevOps)
         // This should never block the local update
-        ExternalSyncService.syncTaskStatus(project, task, status).catch(err => {
+        // Pass the old status (task.status) for discussion comments
+        ExternalSyncService.syncTaskStatus(project, task, task.status, status).catch(err => {
           console.warn('[TASK_UPDATE_STATUS] External sync failed (non-blocking):', err);
         });
 

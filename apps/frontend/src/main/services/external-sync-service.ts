@@ -235,6 +235,7 @@ async function syncToGitHub(
 async function syncToAzureDevOps(
   project: Project,
   task: Task,
+  oldStatus: TaskStatus | undefined,
   newStatus: TaskStatus,
   adoMapping?: ADOStatusMappingConfig
 ): Promise<ExternalSyncResult> {
@@ -243,7 +244,8 @@ async function syncToAzureDevOps(
   const workItemId = metadata.azureDevOpsWorkItemId!;
   const workItemType = metadata.azureDevOpsWorkItemType || 'Task';
 
-  // Map the status to ADO state
+  // Map the statuses to ADO states
+  const oldAdoState = oldStatus ? mapStatusToADO(oldStatus, workItemType, adoMapping) : null;
   const adoState = mapStatusToADO(newStatus, workItemType, adoMapping);
 
   if (!adoState) {
@@ -276,12 +278,21 @@ async function syncToAzureDevOps(
   }
 
   try {
+    // Build discussion comment
+    const fromState = oldAdoState || 'unknown';
+    const discussionComment = `<strong>Auto-Claude Agent:</strong> Updating status from '<em>${fromState}</em>' to '<em>${adoState}</em>'`;
+
     // Azure DevOps uses JSON Patch format for updates
     const patchDocument = [
       {
         op: 'replace',
         path: '/fields/System.State',
         value: adoState,
+      },
+      {
+        op: 'add',
+        path: '/fields/System.History',
+        value: discussionComment,
       },
     ];
 
@@ -297,7 +308,7 @@ async function syncToAzureDevOps(
       }
     );
 
-    debugLog(`Synced ADO work item #${workItemId} to state '${adoState}'`);
+    debugLog(`Synced ADO work item #${workItemId} to state '${adoState}' with discussion comment`);
 
     return {
       success: true,
@@ -337,10 +348,13 @@ async function syncToAzureDevOps(
  *
  * This function is designed to be called in a fire-and-forget manner.
  * It should never throw - all errors are logged and returned in the results.
+ *
+ * @param oldStatus - The previous status before the change (for discussion comments)
  */
 export async function syncTaskStatus(
   project: Project,
   task: Task,
+  oldStatus: TaskStatus | undefined,
   newStatus: TaskStatus
 ): Promise<ExternalSyncResult[]> {
   const results: ExternalSyncResult[] = [];
@@ -391,6 +405,7 @@ export async function syncTaskStatus(
       const result = await syncToAzureDevOps(
         project,
         task,
+        oldStatus,
         newStatus,
         syncConfig.adoStatusMapping
       );
