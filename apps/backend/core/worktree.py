@@ -28,6 +28,7 @@ from typing import TypedDict, TypeVar
 
 from core.git_executable import get_git_executable, run_git
 from debug import debug_warning
+from urllib.parse import urlparse, urlunparse
 
 T = TypeVar("T")
 
@@ -183,6 +184,317 @@ class WorktreeManager:
         self.worktrees_dir = project_dir / ".auto-claude" / "worktrees" / "tasks"
         self._merge_lock = asyncio.Lock()
 
+    def _read_env_file(self) -> dict[str, str]:
+        """
+        Read and parse the project's .env file.
+
+        Returns:
+            Dictionary of environment variables from .env file.
+        """
+        env_path = self.project_dir / ".auto-claude" / ".env"
+        if not env_path.exists():
+            return {}
+
+        try:
+            content = env_path.read_text(encoding="utf-8")
+            env_vars: dict[str, str] = {}
+
+            for line in content.split("\n"):
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    key, _, value = line.partition("=")
+                    key = key.strip()
+                    value = value.strip()
+                    # Remove quotes if present
+                    if (value.startswith('"') and value.endswith('"')) or \
+                       (value.startswith("'") and value.endswith("'")):
+                        value = value[1:-1]
+                    env_vars[key] = value
+
+            return env_vars
+        except (OSError, UnicodeDecodeError) as e:
+            debug_warning("worktree", f"Could not read .env file: {e}")
+            return {}
+
+    def _get_azure_devops_pat(self) -> str | None:
+        """
+        Read Azure DevOps PAT from project's .env file.
+
+        Returns:
+            PAT string if found and Azure DevOps is enabled, None otherwise.
+        """
+        env_vars = self._read_env_file()
+
+        # Check if Azure DevOps is enabled
+        if env_vars.get("AZURE_DEVOPS_ENABLED", "").lower() != "true":
+            return None
+
+        return env_vars.get("AZURE_DEVOPS_PAT")
+
+    def _get_default_branch_from_settings(self) -> str | None:
+        """
+        Read default branch from project's .env file.
+
+        Returns:
+            Default branch name (without 'origin/' prefix), or None if not set.
+        """
+        env_vars = self._read_env_file()
+        default_branch = env_vars.get("DEFAULT_BRANCH", "")
+
+        if default_branch:
+            # Remove 'origin/' prefix if present (settings store as "origin/master")
+            if default_branch.startswith("origin/"):
+                default_branch = default_branch[7:]  # Remove "origin/"
+            return default_branch
+
+        return None
+
+    def _get_authenticated_url(self, remote_url: str, pat: str) -> str | None:
+        """
+        Construct an authenticated URL for Azure DevOps by embedding the PAT.
+
+        Args:
+            remote_url: The original remote URL (HTTPS format)
+            pat: Personal Access Token
+
+        Returns:
+            URL with embedded credentials, or None if URL cannot be modified.
+
+        Example:
+            https://dev.azure.com/org/project/_git/repo
+            -> https://x:{PAT}@dev.azure.com/org/project/_git/repo
+        """
+        try:
+            parsed = urlparse(remote_url)
+
+            # Only handle HTTPS URLs
+            if parsed.scheme != "https":
+                return None
+
+            # Check if it's an Azure DevOps URL
+            if "dev.azure.com" not in parsed.netloc and "visualstudio.com" not in parsed.netloc:
+                return None
+
+            # Construct URL with credentials embedded
+            # Use "x" as username (Azure DevOps ignores it, only uses PAT as password)
+            netloc_with_auth = f"x:{pat}@{parsed.netloc}"
+            authenticated_url = urlunparse((
+                parsed.scheme,
+                netloc_with_auth,
+                parsed.path,
+                parsed.params,
+                parsed.query,
+                parsed.fragment
+            ))
+
+            return authenticated_url
+        except Exception as e:
+            debug_warning("worktree", f"Could not construct authenticated URL: {e}")
+            return None
+
+    def _is_azure_devops_url(self, url: str) -> bool:
+        """Check if a URL is an Azure DevOps URL."""
+        return "dev.azure.com" in url or "visualstudio.com" in url
+
+    def _parse_azure_devops_url(self, url: str) -> dict[str, str] | None:
+        """
+        Parse an Azure DevOps URL to extract organization, project, and repository.
+
+        Supports formats:
+        - https://dev.azure.com/{org}/{project}/_git/{repo}
+        - https://{org}.visualstudio.com/{project}/_git/{repo}
+
+        Returns:
+            Dict with 'organization', 'project', 'repository' keys, or None if parsing fails.
+        """
+        try:
+            parsed = urlparse(url)
+
+            # Format: dev.azure.com/{org}/{project}/_git/{repo}
+            if "dev.azure.com" in parsed.netloc:
+                parts = parsed.path.strip("/").split("/")
+                if len(parts) >= 4 and parts[2] == "_git":
+                    return {
+                        "organization": parts[0],
+                        "project": parts[1],
+                        "repository": parts[3],
+                    }
+
+            # Format: {org}.visualstudio.com/{project}/_git/{repo}
+            if "visualstudio.com" in parsed.netloc:
+                org = parsed.netloc.split(".")[0]
+                parts = parsed.path.strip("/").split("/")
+                if len(parts) >= 3 and parts[1] == "_git":
+                    return {
+                        "organization": org,
+                        "project": parts[0],
+                        "repository": parts[2],
+                    }
+
+            return None
+        except Exception as e:
+            debug_warning("worktree", f"Could not parse Azure DevOps URL: {e}")
+            return None
+
+    def _create_azure_devops_pr(
+        self,
+        remote_url: str,
+        source_branch: str,
+        target_branch: str,
+        title: str,
+        description: str,
+        draft: bool = False,
+    ) -> PullRequestResult:
+        """
+        Create a pull request in Azure DevOps using the REST API.
+
+        Args:
+            remote_url: Azure DevOps repository URL
+            source_branch: Source branch name (without refs/heads/)
+            target_branch: Target branch name (without refs/heads/)
+            title: PR title
+            description: PR description
+            draft: Whether to create as draft PR
+
+        Returns:
+            PullRequestResult with success status and PR URL
+        """
+        import json
+        import urllib.request
+        import urllib.error
+        import base64
+
+        print(f"[CREATE_PR] Creating Azure DevOps PR via REST API")
+
+        # Parse the remote URL
+        ado_config = self._parse_azure_devops_url(remote_url)
+        if not ado_config:
+            return PullRequestResult(
+                success=False,
+                error=f"Could not parse Azure DevOps URL: {remote_url}",
+            )
+
+        org = ado_config["organization"]
+        project = ado_config["project"]
+        repo = ado_config["repository"]
+        print(f"[CREATE_PR] Azure DevOps: org={org}, project={project}, repo={repo}")
+
+        # Get PAT from settings
+        pat = self._get_azure_devops_pat()
+        if not pat:
+            return PullRequestResult(
+                success=False,
+                error=(
+                    "Azure DevOps PAT not configured.\n\n"
+                    "Please configure your PAT in Project Settings > Integrations > Azure DevOps"
+                ),
+            )
+
+        # Build API URL
+        api_url = f"https://dev.azure.com/{org}/{project}/_apis/git/repositories/{repo}/pullrequests?api-version=7.1"
+        print(f"[CREATE_PR] API URL: {api_url}")
+
+        # Build request body
+        source_ref = f"refs/heads/{source_branch}"
+        target_ref = f"refs/heads/{target_branch}"
+        print(f"[CREATE_PR] Source ref: {source_ref}")
+        print(f"[CREATE_PR] Target ref: {target_ref}")
+
+        body = {
+            "sourceRefName": source_ref,
+            "targetRefName": target_ref,
+            "title": title,
+            "description": description,
+        }
+        if draft:
+            body["isDraft"] = True
+
+        # Make API request
+        try:
+            # Create Basic auth header
+            auth_string = base64.b64encode(f":{pat}".encode()).decode()
+
+            req = urllib.request.Request(
+                api_url,
+                data=json.dumps(body).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Basic {auth_string}",
+                },
+                method="POST",
+            )
+
+            print(f"[CREATE_PR] Sending PR creation request...")
+            with urllib.request.urlopen(req, timeout=60) as response:
+                response_data = json.loads(response.read().decode("utf-8"))
+                pr_id = response_data.get("pullRequestId")
+                pr_url = f"https://dev.azure.com/{org}/{project}/_git/{repo}/pullrequest/{pr_id}"
+                print(f"[CREATE_PR] PR created successfully: {pr_url}")
+                return PullRequestResult(
+                    success=True,
+                    pr_url=pr_url,
+                    already_exists=False,
+                )
+
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode("utf-8") if e.fp else ""
+            print(f"[CREATE_PR] HTTP Error {e.code}: {error_body[:500]}")
+
+            # Check for "already exists" error
+            if e.code == 409 or "already exists" in error_body.lower() or "TF401179" in error_body:
+                # Try to find existing PR URL
+                existing_url = f"https://dev.azure.com/{org}/{project}/_git/{repo}/pullrequests?_a=active&sourceRef={source_branch}"
+                return PullRequestResult(
+                    success=True,
+                    pr_url=existing_url,
+                    already_exists=True,
+                    message="A pull request already exists for this branch",
+                )
+
+            # Branch not found error (TF401398)
+            if e.code == 400 and ("TF401398" in error_body or "no longer exists" in error_body.lower()):
+                return PullRequestResult(
+                    success=False,
+                    error=(
+                        f"Target branch '{target_branch}' not found in Azure DevOps.\n\n"
+                        f"The PR cannot be created because the target branch doesn't exist.\n"
+                        f"Please check that the target branch name is correct.\n\n"
+                        f"Common branch names: main, master, develop"
+                    ),
+                )
+
+            # Authentication error
+            if e.code == 401 or e.code == 403:
+                return PullRequestResult(
+                    success=False,
+                    error=(
+                        "Azure DevOps authentication failed.\n\n"
+                        "Please check your PAT in Project Settings > Integrations > Azure DevOps.\n"
+                        "Ensure the PAT has 'Code (Read & Write)' scope."
+                    ),
+                )
+
+            return PullRequestResult(
+                success=False,
+                error=f"Azure DevOps API error ({e.code}): {error_body[:200]}",
+            )
+
+        except urllib.error.URLError as e:
+            print(f"[CREATE_PR] URL Error: {e}")
+            return PullRequestResult(
+                success=False,
+                error=f"Network error: {e.reason}",
+            )
+
+        except Exception as e:
+            print(f"[CREATE_PR] Unexpected error: {e}")
+            return PullRequestResult(
+                success=False,
+                error=f"Failed to create PR: {e}",
+            )
+
     def _detect_base_branch(self) -> str:
         """
         Detect the base branch for worktree creation.
@@ -235,6 +547,60 @@ class WorktreeManager:
         if result.returncode != 0:
             raise WorktreeError(f"Failed to get current branch: {result.stderr}")
         return result.stdout.strip()
+
+    def _get_default_remote(self, cwd: Path | None = None) -> str:
+        """
+        Detect the default git remote name.
+
+        Priority order:
+        1. Remote for current branch (git config branch.<branch>.remote) - only if it's a name, not URL
+        2. First available remote (git remote)
+        3. Fall back to 'origin'
+
+        Args:
+            cwd: Optional working directory to detect remote from (defaults to project_dir)
+
+        Returns:
+            The detected remote name (not a URL)
+        """
+        git_dir = cwd or self.project_dir
+
+        # 1. Try to get remote for current branch
+        try:
+            result = run_git(
+                ["rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=git_dir,
+            )
+            if result.returncode == 0:
+                current_branch = result.stdout.strip()
+                result = run_git(
+                    ["config", f"branch.{current_branch}.remote"],
+                    cwd=git_dir,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    remote = result.stdout.strip()
+                    # Make sure it's a remote name, not a URL
+                    # URLs contain :// or start with git@
+                    if "://" not in remote and not remote.startswith("git@"):
+                        debug_warning("worktree", f"Detected remote from current branch: {remote}")
+                        return remote
+                    else:
+                        debug_warning("worktree", f"Branch remote is a URL, skipping: {remote[:50]}...")
+        except Exception as e:
+            debug_warning("worktree", f"Could not get remote from current branch: {e}")
+
+        # 2. Get first available remote
+        result = run_git(["remote"], cwd=git_dir)
+        if result.returncode == 0 and result.stdout.strip():
+            remotes = result.stdout.strip().split('\n')
+            if remotes:
+                remote = remotes[0]
+                debug_warning("worktree", f"Using first available remote: {remote}")
+                return remote
+
+        # 3. Fall back to 'origin'
+        debug_warning("worktree", "No remote found, falling back to 'origin'")
+        return "origin"
 
     def _run_git(
         self, args: list[str], cwd: Path | None = None, timeout: int = 60
@@ -500,18 +866,21 @@ class WorktreeManager:
         # Delete branch if it exists (from previous attempt)
         self._run_git(["branch", "-D", branch_name])
 
+        # Detect the default remote (handles Azure DevOps, GitHub, etc.)
+        remote = self._get_default_remote()
+
         # Fetch latest from remote to ensure we have the most up-to-date code
-        # GitHub/remote is the source of truth, not the local branch
-        fetch_result = self._run_git(["fetch", "origin", self.base_branch])
+        # Remote is the source of truth, not the local branch
+        fetch_result = self._run_git(["fetch", remote, self.base_branch])
         if fetch_result.returncode != 0:
             print(
-                f"Warning: Could not fetch {self.base_branch} from origin: {fetch_result.stderr}"
+                f"Warning: Could not fetch {self.base_branch} from {remote}: {fetch_result.stderr}"
             )
             print("Falling back to local branch...")
 
         # Determine the start point for the worktree
-        # Prefer origin/{base_branch} (remote) over local branch to ensure we have latest code
-        remote_ref = f"origin/{self.base_branch}"
+        # Prefer remote/{base_branch} over local branch to ensure we have latest code
+        remote_ref = f"{remote}/{self.base_branch}"
         start_point = self.base_branch  # Default to local branch
 
         # Check if remote ref exists and use it as the source of truth
@@ -846,7 +1215,7 @@ class WorktreeManager:
 
     def push_branch(self, spec_name: str, force: bool = False) -> PushBranchResult:
         """
-        Push a spec's branch to the remote origin with retry logic.
+        Push a spec's branch to the remote with retry logic.
 
         Args:
             spec_name: The spec folder name
@@ -859,22 +1228,126 @@ class WorktreeManager:
                 - remote: str (if successful)
                 - error: str (if failed)
         """
+        print(f"[PUSH_BRANCH] Starting push_branch for spec: {spec_name}")
         info = self.get_worktree_info(spec_name)
         if not info:
+            print(f"[PUSH_BRANCH] ERROR: No worktree found for spec: {spec_name}")
             return PushBranchResult(
                 success=False,
                 error=f"No worktree found for spec: {spec_name}",
             )
 
-        # Push the branch to origin
-        push_args = ["push", "-u", "origin", info.branch]
+        print(f"[PUSH_BRANCH] Worktree info: path={info.path}, branch={info.branch}")
+        # Detect the default remote from the worktree directory (handles Azure DevOps, GitHub, etc.)
+        remote = self._get_default_remote(cwd=info.path)
+        print(f"Detected remote: {remote}")
+
+        # Verify the remote exists before attempting push
+        check_remote = self._run_git(["remote", "get-url", remote], cwd=info.path)
+        if check_remote.returncode != 0:
+            # Get list of available remotes for error message
+            list_remotes = self._run_git(["remote"], cwd=info.path)
+            available_remotes = list_remotes.stdout.strip().split('\n') if list_remotes.stdout.strip() else []
+
+            if not available_remotes:
+                return PushBranchResult(
+                    success=False,
+                    branch=info.branch,
+                    error=(
+                        f"No git remote configured for this repository.\n\n"
+                        f"To push your changes, you need to add a remote first:\n"
+                        f"  cd {self.project_dir}\n"
+                        f"  git remote add origin <your-repository-url>\n\n"
+                        f"For Azure DevOps:\n"
+                        f"  git remote add origin https://dev.azure.com/<org>/<project>/_git/<repo>\n\n"
+                        f"For GitHub:\n"
+                        f"  git remote add origin https://github.com/<owner>/<repo>.git"
+                    ),
+                )
+            else:
+                return PushBranchResult(
+                    success=False,
+                    branch=info.branch,
+                    error=(
+                        f"Remote '{remote}' not found. Available remotes: {', '.join(available_remotes)}\n\n"
+                        f"Add the missing remote with:\n"
+                        f"  cd {self.project_dir}\n"
+                        f"  git remote add {remote} <your-repository-url>"
+                    ),
+                )
+
+        # Get remote URL
+        remote_url_result = self._run_git(["remote", "get-url", remote], cwd=info.path)
+        remote_url = remote_url_result.stdout.strip() if remote_url_result.returncode == 0 else "unknown"
+        print(f"[PUSH_BRANCH] Remote URL: {remote_url}")
+
+        # Check if this is Azure DevOps and handle authentication
+        is_azure_devops = self._is_azure_devops_url(remote_url)
+        push_url = remote_url  # URL to push to (may be modified with PAT)
+        pat_configured = False
+
+        if is_azure_devops:
+            print(f"[PUSH_BRANCH] Azure DevOps detected, checking for PAT in settings...")
+            pat = self._get_azure_devops_pat()
+            if pat:
+                authenticated_url = self._get_authenticated_url(remote_url, pat)
+                if authenticated_url:
+                    push_url = authenticated_url
+                    pat_configured = True
+                    # Don't log the URL with PAT for security
+                    print(f"[PUSH_BRANCH] Using PAT from project settings for authentication")
+                else:
+                    print(f"[PUSH_BRANCH] WARNING: Could not construct authenticated URL")
+            else:
+                print(f"[PUSH_BRANCH] WARNING: No PAT found in project settings")
+                return PushBranchResult(
+                    success=False,
+                    branch=info.branch,
+                    error=(
+                        "Azure DevOps PAT not configured.\n\n"
+                        "Please configure your Azure DevOps Personal Access Token (PAT) in Project Settings:\n"
+                        "1. Go to Project Settings > Integrations > Azure DevOps\n"
+                        "2. Enter your PAT with 'Code (Read & Write)' scope\n"
+                        "3. Save and retry the PR creation\n\n"
+                        "To create a PAT:\n"
+                        "1. Go to Azure DevOps > User Settings > Personal Access Tokens\n"
+                        "2. Create a token with 'Code (Read & Write)' scope"
+                    ),
+                )
+
+        # Push the branch - use authenticated URL for Azure DevOps, remote name for others
+        if pat_configured:
+            # For Azure DevOps with PAT, push directly to the authenticated URL
+            # Don't use -u flag with URL as it confuses git's remote tracking
+            push_args = ["push", push_url, f"HEAD:refs/heads/{info.branch}"]
+        else:
+            # For GitHub and others, use the remote name with -u for tracking
+            push_args = ["push", "-u", remote, info.branch]
+
         if force:
             push_args.insert(1, "--force")
+
+        # Log command (hide PAT in URL for security)
+        if pat_configured:
+            print(f"[PUSH_BRANCH] Push command: git push <authenticated-url> HEAD:refs/heads/{info.branch}")
+        else:
+            print(f"[PUSH_BRANCH] Push command: git {' '.join(push_args)}")
+        print(f"[PUSH_BRANCH] Working directory: {info.path}")
+        print(f"[PUSH_BRANCH] Push timeout: {self.GIT_PUSH_TIMEOUT}s")
 
         def do_push() -> tuple[bool, PushBranchResult | None, str]:
             """Execute push operation for retry wrapper."""
             try:
                 git_executable = get_git_executable()
+                print(f"[PUSH_BRANCH] Executing git push...")
+
+                # Set GIT_TERMINAL_PROMPT=0 to prevent git from hanging if it needs credentials
+                # This makes git fail fast with an error instead of waiting for user input
+                env = os.environ.copy()
+                env["GIT_TERMINAL_PROMPT"] = "0"
+                # Also set GIT_ASKPASS to empty to prevent any GUI credential helpers
+                env["GIT_ASKPASS"] = ""
+
                 result = subprocess.run(
                     [git_executable] + push_args,
                     cwd=info.path,
@@ -883,7 +1356,18 @@ class WorktreeManager:
                     encoding="utf-8",
                     errors="replace",
                     timeout=self.GIT_PUSH_TIMEOUT,
+                    env=env,
                 )
+                print(f"[PUSH_BRANCH] Push completed with return code: {result.returncode}")
+                # Don't log stdout/stderr if they might contain PAT
+                if result.stdout and not pat_configured:
+                    print(f"[PUSH_BRANCH] stdout: {result.stdout[:500]}")
+                if result.stderr and not pat_configured:
+                    print(f"[PUSH_BRANCH] stderr: {result.stderr[:500]}")
+                elif result.returncode != 0:
+                    # Log a sanitized version for Azure DevOps errors
+                    sanitized_stderr = result.stderr.replace(pat, "***PAT***") if pat_configured and pat else result.stderr
+                    print(f"[PUSH_BRANCH] stderr (sanitized): {sanitized_stderr[:500]}")
 
                 if result.returncode == 0:
                     return (
@@ -891,10 +1375,30 @@ class WorktreeManager:
                         PushBranchResult(
                             success=True,
                             branch=info.branch,
-                            remote="origin",
+                            remote=remote,
                         ),
                         "",
                     )
+
+                # Check for authentication errors
+                stderr_lower = result.stderr.lower()
+                if "authentication" in stderr_lower or "terminal prompts disabled" in stderr_lower or "could not read" in stderr_lower or "401" in result.stderr:
+                    if is_azure_devops:
+                        auth_error = (
+                            "Azure DevOps authentication failed.\n\n"
+                            "The PAT in your project settings may be invalid or expired.\n"
+                            "Please check:\n"
+                            "1. Go to Project Settings > Integrations > Azure DevOps\n"
+                            "2. Verify your PAT is correct and not expired\n"
+                            "3. Ensure the PAT has 'Code (Read & Write)' scope"
+                        )
+                    else:
+                        auth_error = (
+                            f"Authentication failed for {remote_url}.\n\n"
+                            "Please configure your git credentials."
+                        )
+                    return (False, None, auth_error)
+
                 return (False, None, result.stderr)
             except FileNotFoundError:
                 return (False, None, "git executable not found")
@@ -933,6 +1437,9 @@ class WorktreeManager:
         """
         Create a GitHub pull request for a spec's branch using gh CLI with retry logic.
 
+        NOTE: This method currently only supports GitHub via gh CLI.
+        Azure DevOps PRs should be created via the Azure DevOps REST API.
+
         Args:
             spec_name: The spec folder name
             target_branch: Target branch for PR (defaults to base_branch)
@@ -946,20 +1453,67 @@ class WorktreeManager:
                 - already_exists: bool (if PR already exists)
                 - error: str (if failed)
         """
+        print(f"[CREATE_PR] Starting create_pull_request for spec: {spec_name}")
         info = self.get_worktree_info(spec_name)
         if not info:
+            print(f"[CREATE_PR] ERROR: No worktree found for spec: {spec_name}")
             return PullRequestResult(
                 success=False,
                 error=f"No worktree found for spec: {spec_name}",
             )
 
+        print(f"[CREATE_PR] Worktree info: path={info.path}, branch={info.branch}")
+
+        # Determine target branch
         target = target_branch or self.base_branch
+        print(f"[CREATE_PR] Initial target branch: {target}")
+
+        # Check settings for default branch (especially important for Azure DevOps)
+        settings_default = self._get_default_branch_from_settings()
+        if settings_default:
+            print(f"[CREATE_PR] Default branch from settings: {settings_default}")
+            # For Azure DevOps, prefer settings default over passed target
+            # This handles the case where worktree was created with wrong base branch
+            if settings_default != target:
+                print(f"[CREATE_PR] Overriding target with settings default: {settings_default}")
+                target = settings_default
+
         pr_title = title or f"auto-claude: {spec_name}"
+        print(f"[CREATE_PR] Target branch: {target}, Title: {pr_title}")
 
         # Get PR body from spec.md if available
         pr_body = self._extract_spec_summary(spec_name)
+        print(f"[CREATE_PR] PR body length: {len(pr_body)} chars")
 
-        # Build gh pr create command
+        # Check remote URL to determine if this is Azure DevOps or GitHub
+        # Try worktree first, then fall back to main project directory
+        remote = self._get_default_remote(cwd=info.path)
+        remote_url_result = self._run_git(["remote", "get-url", remote], cwd=info.path)
+        remote_url = remote_url_result.stdout.strip() if remote_url_result.returncode == 0 else ""
+
+        # If no remote in worktree, try main project directory
+        if not remote_url:
+            print(f"[CREATE_PR] No remote in worktree, checking main project directory")
+            remote = self._get_default_remote(cwd=self.project_dir)
+            remote_url_result = self._run_git(["remote", "get-url", remote], cwd=self.project_dir)
+            remote_url = remote_url_result.stdout.strip() if remote_url_result.returncode == 0 else ""
+
+        print(f"[CREATE_PR] Remote URL: {remote_url}")
+
+        # Check if this is Azure DevOps - use REST API instead of gh CLI
+        is_azure_devops = self._is_azure_devops_url(remote_url)
+        if is_azure_devops:
+            print(f"[CREATE_PR] Azure DevOps detected, using REST API for PR creation")
+            return self._create_azure_devops_pr(
+                remote_url=remote_url,
+                source_branch=info.branch,
+                target_branch=target,
+                title=pr_title,
+                description=pr_body,
+                draft=draft,
+            )
+
+        # Build gh pr create command (GitHub only)
         gh_args = [
             "gh",
             "pr",
@@ -975,6 +1529,9 @@ class WorktreeManager:
         ]
         if draft:
             gh_args.append("--draft")
+
+        print(f"[CREATE_PR] gh command: {' '.join(gh_args[:6])}...")  # Don't log full body
+        print(f"[CREATE_PR] gh CLI timeout: {self.GH_CLI_TIMEOUT}s")
 
         def is_pr_retryable(stderr: str) -> bool:
             """Check if PR creation error is retryable (network or HTTP 5xx)."""

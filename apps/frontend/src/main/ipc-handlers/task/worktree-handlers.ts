@@ -20,6 +20,7 @@ import {
   findTaskWorktree,
 } from '../../worktree-paths';
 import { persistPlanStatus, updateTaskMetadataPrUrl } from './plan-file-utils';
+import { linkPRToADOOnCreate } from '../../services/external-sync-service';
 
 // Regex pattern for validating git branch names
 const GIT_BRANCH_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9._/-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$/;
@@ -3107,6 +3108,19 @@ export function registerWorktreeHandlers(
                     task.specId,
                     debug
                   );
+
+                  // Link PR to ADO work item if task is from ADO (fire and forget)
+                  linkPRToADOOnCreate(project, task, result.prUrl).then(linkResult => {
+                    if (linkResult) {
+                      if (linkResult.success) {
+                        debug('Successfully linked PR to ADO work item');
+                      } else {
+                        debug('Failed to link PR to ADO work item:', linkResult.error?.message);
+                      }
+                    }
+                  }).catch(err => {
+                    debug('Error linking PR to ADO:', err);
+                  });
                 } else if (result.alreadyExists) {
                   debug('PR already exists, not updating task status');
                 }

@@ -344,12 +344,25 @@
       "integrationDescription": "Se connecter à GitLab pour le suivi des issues",
       "syncDescription": "Synchroniser avec GitLab Issues"
     },
+    "azure-devops": {
+      "title": "Azure DevOps",
+      "description": "Sync work items Azure DevOps",
+      "integrationTitle": "Intégration Azure DevOps",
+      "integrationDescription": "Se connecter à Azure DevOps pour le suivi des work items",
+      "syncDescription": "Synchroniser avec Azure DevOps Work Items"
+    },
     "memory": {
       "title": "Mémoire",
       "description": "Backend mémoire Graphiti",
       "integrationTitle": "Mémoire",
       "integrationDescription": "Configurer la mémoire persistante inter-sessions pour les agents",
       "syncDescription": "Configurer la mémoire persistante"
+    },
+    "sync": {
+      "title": "Sync Statut",
+      "description": "Synchroniser le statut externalement",
+      "integrationTitle": "Synchronisation de Statut Externe",
+      "integrationDescription": "Synchroniser automatiquement les changements de statut vers GitHub et Azure DevOps"
     }
   },
   "agentProfile": {
@@ -576,6 +589,60 @@
       "createAnthropicKey": "Créer une clé API Anthropic",
       "openai": "Ceci ressemble à une API OpenAI. Vous aurez besoin d'une clé API.",
       "createOpenaiKey": "Créer une clé API OpenAI"
+    }
+  },
+  "externalSync": {
+    "title": "Synchronisation de statut externe",
+    "description": "Mettre à jour automatiquement les éléments liés lorsque le statut des tâches change",
+    "enabled": "Activer la synchronisation de statut externe",
+    "enabledDescription": "Synchroniser les changements de statut des tâches avec les Issues GitHub et les Work Items Azure DevOps liés",
+    "noIntegrationsConfigured": "Configurez d'abord l'intégration GitHub ou Azure DevOps pour activer la synchronisation.",
+    "github": {
+      "title": "Issues GitHub",
+      "syncEnabled": "Synchroniser avec les Issues GitHub",
+      "description": "Fermer les issues quand les tâches sont marquées terminées, rouvrir quand elles retournent au backlog",
+      "notConfigured": "Intégration GitHub non configurée. Activez-la dans la section paramètres GitHub."
+    },
+    "azureDevOps": {
+      "title": "Work Items Azure DevOps",
+      "syncEnabled": "Synchroniser avec les Work Items Azure DevOps",
+      "description": "Mettre à jour l'état du work item quand le statut des tâches change",
+      "notConfigured": "Intégration Azure DevOps non configurée. Activez-la dans la section paramètres Azure DevOps.",
+      "configureMapping": "Configurer le mapping des statuts",
+      "mapping": {
+        "title": "Mapping des statuts",
+        "description": "Mapper les statuts Auto-Claude aux états Azure DevOps pour chaque type de work item",
+        "workItemType": "Type de Work Item",
+        "backlog": "Backlog",
+        "backlogHint": "(backlog)",
+        "in_progress": "En cours",
+        "in_progressHint": "(in_progress, ai_review, human_review)",
+        "done": "Terminé",
+        "doneHint": "(done, pr_created)",
+        "fetchStates": "Récupérer les états",
+        "refreshTypes": "Actualiser les types",
+        "resetToDefaults": "Réinitialiser par défaut",
+        "resetAllToDefaults": "Tout réinitialiser par défaut",
+        "addWorkItemType": "Ajouter un type de Work Item",
+        "addManualType": "Ajouter un type personnalisé...",
+        "enterTypeName": "Entrez le nom du type de work item (ex: Bug, Task)",
+        "enterStateName": "Entrez le nom de l'état (ex: New, Active, Closed)",
+        "addState": "Ajouter",
+        "cancel": "Annuler",
+        "noStatesFound": "Aucun état trouvé. Cliquez sur 'Récupérer les états' pour charger.",
+        "noTypesConfigured": "Aucun type de work item configuré. Ajoutez-en un pour personnaliser le mapping des statuts.",
+        "selectState": "Sélectionner un état",
+        "customized": "Personnalisé",
+        "remove": "Supprimer",
+        "save": "Enregistrer le mapping"
+      }
+    },
+    "toast": {
+      "enabled": "Synchronisation externe activée",
+      "disabled": "Synchronisation externe désactivée",
+      "githubEnabled": "Synchronisation GitHub activée",
+      "githubDisabled": "Synchronisation GitHub désactivée",
+      "mappingSaved": "Mapping des statuts enregistré"
     }
   }
 }

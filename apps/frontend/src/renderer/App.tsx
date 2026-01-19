@@ -41,6 +41,8 @@ import { GitHubIssues } from './components/GitHubIssues';
 import { GitLabIssues } from './components/GitLabIssues';
 import { GitHubPRs } from './components/github-prs';
 import { GitLabMergeRequests } from './components/gitlab-merge-requests';
+import { AzureDevOpsWorkItems } from './components/AzureDevOpsWorkItems';
+import { AzureDevOpsPRs } from './components/azure-devops-prs';
 import { Changelog } from './components/Changelog';
 import { Worktrees } from './components/Worktrees';
 import { AgentTools } from './components/AgentTools';
@@ -50,10 +52,11 @@ import { SDKRateLimitModal } from './components/SDKRateLimitModal';
 import { OnboardingWizard } from './components/onboarding';
 import { AppUpdateNotification } from './components/AppUpdateNotification';
 import { ProactiveSwapListener } from './components/ProactiveSwapListener';
-import { GitHubSetupModal } from './components/GitHubSetupModal';
+import { RepositorySetupModal } from './components/RepositorySetupModal';
+import { detectGitProvider, type GitProvider } from './lib/git-provider-detection';
 import { useProjectStore, loadProjects, addProject, initializeProject, removeProject } from './stores/project-store';
 import { useTaskStore, loadTasks } from './stores/task-store';
-import { useSettingsStore, loadSettings, loadProfiles } from './stores/settings-store';
+import { useSettingsStore, loadSettings, loadProfiles, saveSettings } from './stores/settings-store';
 import { useClaudeProfileStore } from './stores/claude-profile-store';
 import { useTerminalStore, restoreTerminalSessions } from './stores/terminal-store';
 import { initializeGitHubListeners } from './stores/github';
@@ -127,6 +130,7 @@ export function App() {
   const [settingsInitialSection, setSettingsInitialSection] = useState<AppSection | undefined>(undefined);
   const [settingsInitialProjectSection, setSettingsInitialProjectSection] = useState<ProjectSettingsSection | undefined>(undefined);
   const [activeView, setActiveView] = useState<SidebarView>('kanban');
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const [isOnboardingWizardOpen, setIsOnboardingWizardOpen] = useState(false);
   const [isRefreshingTasks, setIsRefreshingTasks] = useState(false);
 
@@ -139,9 +143,9 @@ export function App() {
   const [skippedInitProjectId, setSkippedInitProjectId] = useState<string | null>(null);
   const [showAddProjectModal, setShowAddProjectModal] = useState(false);
 
-  // GitHub setup state (shown after Auto Claude init)
-  const [showGitHubSetup, setShowGitHubSetup] = useState(false);
-  const [gitHubSetupProject, setGitHubSetupProject] = useState<Project | null>(null);
+  // Repository setup state (shown after Auto Claude init - handles both GitHub and Azure DevOps)
+  const [showRepositorySetup, setShowRepositorySetup] = useState(false);
+  const [repositorySetupProject, setRepositorySetupProject] = useState<Project | null>(null);
 
   // Remove project confirmation state
   const [showRemoveProjectDialog, setShowRemoveProjectDialog] = useState(false);
@@ -359,6 +363,32 @@ export function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeView, openProjectTab]);
+
+  // Global keyboard shortcut: Cmd/Ctrl+B to toggle sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip if in input fields
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+
+      // Cmd/Ctrl+B: Toggle sidebar
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        const currentState = useSettingsStore.getState().settings.sidebarCollapsed ?? false;
+        const newState = !currentState;
+        useSettingsStore.getState().updateSettings({ sidebarCollapsed: newState });
+        saveSettings({ sidebarCollapsed: newState });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Load tasks when project changes
   useEffect(() => {
@@ -668,10 +698,12 @@ export function App() {
         setShowInitDialog(false);
         setPendingProject(null);
 
-        // Show GitHub setup modal
+        // Detect git provider and show appropriate setup modal
         if (updatedProject) {
-          setGitHubSetupProject(updatedProject);
-          setShowGitHubSetup(true);
+          // Show repository setup (handles both GitHub and Azure DevOps)
+          // The RepositorySetupModal will let user choose the provider
+          setRepositorySetupProject(updatedProject);
+          setShowRepositorySetup(true);
         }
       } else {
         // Initialization failed - show error but keep dialog open
@@ -689,47 +721,71 @@ export function App() {
     }
   };
 
-  const handleGitHubSetupComplete = async (settings: {
-    githubToken: string;
-    githubRepo: string;
-    mainBranch: string;
+  const handleRepositorySetupComplete = async (settings: {
+    // GitHub settings
+    githubToken?: string;
+    githubRepo?: string;
     githubAuthMethod?: 'oauth' | 'pat';
+    // Azure DevOps settings
+    azureDevOpsPat?: string;
+    azureDevOpsOrg?: string;
+    azureDevOpsProject?: string;
+    azureDevOpsRepo?: string;
+    // Common
+    mainBranch: string;
   }) => {
-    if (!gitHubSetupProject) return;
+    if (!repositorySetupProject) return;
 
     try {
-      // NOTE: settings.githubToken is a GitHub access token (from gh CLI),
-      // NOT a Claude Code OAuth token. They are different things:
-      // - GitHub token: for GitHub API access (repo operations)
-      // - Claude token: for Claude AI access (run.py, roadmap, etc.)
-      // The user needs to separately authenticate with Claude using 'claude setup-token'
+      // Update project env config based on provider
+      if (settings.githubToken && settings.githubRepo) {
+        // GitHub setup
+        await window.electronAPI.updateProjectEnv(repositorySetupProject.id, {
+          githubEnabled: true,
+          githubToken: settings.githubToken,
+          githubRepo: settings.githubRepo,
+          githubAuthMethod: settings.githubAuthMethod
+        });
+      } else if (settings.azureDevOpsPat && settings.azureDevOpsOrg) {
+        // Azure DevOps setup
+        console.debug('[App] Saving Azure DevOps settings:', {
+          projectId: repositorySetupProject.id,
+          org: settings.azureDevOpsOrg,
+          project: settings.azureDevOpsProject,
+          repo: settings.azureDevOpsRepo,
+          hasPat: !!settings.azureDevOpsPat
+        });
+        const result = await window.electronAPI.updateProjectEnv(repositorySetupProject.id, {
+          azureDevOpsEnabled: true,
+          azureDevOpsPat: settings.azureDevOpsPat,
+          azureDevOpsOrganization: settings.azureDevOpsOrg,
+          azureDevOpsProject: settings.azureDevOpsProject,
+          azureDevOpsRepository: settings.azureDevOpsRepo
+        });
+        console.debug('[App] Azure DevOps settings save result:', result);
 
-      // Update project env config with GitHub settings
-      await window.electronAPI.updateProjectEnv(gitHubSetupProject.id, {
-        githubEnabled: true,
-        githubToken: settings.githubToken, // GitHub token for repo access
-        githubRepo: settings.githubRepo,
-        githubAuthMethod: settings.githubAuthMethod // Track how user authenticated
-      });
+        // Trigger sidebar refresh to show Azure DevOps menu items
+        setSidebarRefreshKey((prev) => prev + 1);
+      }
 
       // Update project settings with mainBranch
-      await window.electronAPI.updateProjectSettings(gitHubSetupProject.id, {
+      await window.electronAPI.updateProjectSettings(repositorySetupProject.id, {
         mainBranch: settings.mainBranch
       });
 
       // Refresh projects to get updated data
       await loadProjects();
     } catch (error) {
-      console.error('Failed to save GitHub settings:', error);
+      console.error('Failed to save repository settings:', error);
     }
 
-    setShowGitHubSetup(false);
-    setGitHubSetupProject(null);
+    setShowRepositorySetup(false);
+    setRepositorySetupProject(null);
   };
 
-  const handleGitHubSetupSkip = () => {
-    setShowGitHubSetup(false);
-    setGitHubSetupProject(null);
+  const handleRepositorySetupSkip = () => {
+    setShowRepositorySetup(false);
+    setRepositorySetupProject(null);
   };
 
   const handleSkipInit = () => {
@@ -764,6 +820,7 @@ export function App() {
           onNewTaskClick={() => setIsNewTaskDialogOpen(true)}
           activeView={activeView}
           onViewChange={setActiveView}
+          refreshKey={sidebarRefreshKey}
         />
 
         {/* Main content */}
@@ -869,6 +926,24 @@ export function App() {
                     projectId={activeProjectId || selectedProjectId!}
                     onOpenSettings={() => {
                       setSettingsInitialProjectSection('gitlab');
+                      setIsSettingsDialogOpen(true);
+                    }}
+                  />
+                )}
+                {activeView === 'azure-devops-work-items' && (activeProjectId || selectedProjectId) && (
+                  <AzureDevOpsWorkItems
+                    onOpenSettings={() => {
+                      setSettingsInitialProjectSection('azure-devops');
+                      setIsSettingsDialogOpen(true);
+                    }}
+                    onNavigateToTask={handleGoToTask}
+                  />
+                )}
+                {activeView === 'azure-devops-prs' && (activeProjectId || selectedProjectId) && (
+                  <AzureDevOpsPRs
+                    projectId={activeProjectId || selectedProjectId!}
+                    onOpenSettings={() => {
+                      setSettingsInitialProjectSection('azure-devops');
                       setIsSettingsDialogOpen(true);
                     }}
                   />
@@ -1020,14 +1095,14 @@ export function App() {
           </DialogContent>
         </Dialog>
 
-        {/* GitHub Setup Modal - shows after Auto Claude init to configure GitHub */}
-        {gitHubSetupProject && (
-          <GitHubSetupModal
-            open={showGitHubSetup}
-            onOpenChange={setShowGitHubSetup}
-            project={gitHubSetupProject}
-            onComplete={handleGitHubSetupComplete}
-            onSkip={handleGitHubSetupSkip}
+        {/* Repository Setup Modal - shows after Auto Claude init (handles both GitHub and Azure DevOps) */}
+        {repositorySetupProject && (
+          <RepositorySetupModal
+            open={showRepositorySetup}
+            onOpenChange={setShowRepositorySetup}
+            project={repositorySetupProject}
+            onComplete={handleRepositorySetupComplete}
+            onSkip={handleRepositorySetupSkip}
           />
         )}
 

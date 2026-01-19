@@ -1,3 +1,77 @@
+## Unreleased - Azure DevOps Repository Support
+
+### ✨ New Features
+
+- **Unified Git Provider Selection in Project Setup**: Complete integration of GitHub and Azure DevOps setup flows with provider selection
+  - New `RepositorySetupModal` wrapper component that handles both providers seamlessly
+  - Clean, visual provider selection screen with branded icons for GitHub and Azure DevOps
+  - Automatic routing to the appropriate setup flow based on user's provider choice
+  - Respects existing authentication to skip unnecessary steps
+  - Unified completion handling for both GitHub and Azure DevOps configurations
+  - Back navigation support to return to provider selection if needed
+
+- **Azure DevOps Repository Setup Flow**: Full support for Azure DevOps repositories in project creation and "add existing project" flows, achieving feature parity with GitHub integration
+  - PAT-based authentication with real-time validation
+  - Auto-detection of Azure DevOps remotes from git URL (supports dev.azure.com, ssh.dev.azure.com, and legacy visualstudio.com URLs)
+  - Organization → Project → Repository 3-level hierarchy selection
+  - Create new repositories or link existing ones
+  - Branch selection for task base branches
+  - Provider detection and automatic routing to correct setup modal
+
+- **New Components**:
+  - `AzureDevOpsSetupModal` - Full wizard flow for ADO project setup
+  - `AzureDevOpsPATFlow` - PAT authentication component with validation
+  - `git-provider-detection` utility - Detects GitHub, Azure DevOps, or GitLab from remote URLs
+
+- **New IPC Channels for Azure DevOps Auth/Setup**:
+  - `azureDevOps:detectRepo` - Detect ADO repo from git remote
+  - `azureDevOps:validatePat` - Validate Personal Access Token
+  - `azureDevOps:listOrganizations` - List accessible organizations
+  - `azureDevOps:listProjectsWithPat` - List projects in organization
+  - `azureDevOps:listReposWithPat` - List repos in project
+  - `azureDevOps:createRepo` - Create new repository
+  - `azureDevOps:addRemote` - Add/update git remote
+  - `azureDevOps:getBranches` - Get branches from repository
+
+### 🌐 Internationalization
+
+- Added English and French translations for Azure DevOps setup flow
+
+### 🐛 Bug Fixes
+
+- **PR Creation for Azure DevOps Repositories**: Fixed issue where creating Pull Requests from the kanban board failed for Azure DevOps repositories with "origin does not appear to be a git repository" error
+  - Added dynamic remote detection to handle repositories with non-standard remote names
+  - Updated `push_branch` and `create_worktree` methods to detect and use the correct remote name instead of hardcoding "origin"
+  - Remote detection prioritizes: 1) Remote for current branch, 2) First available remote, 3) Falls back to "origin"
+  - Added validation to check if detected remote exists before attempting push
+  - Improved error messages to provide actionable guidance when no remote is configured, including specific commands for Azure DevOps and GitHub
+
+- **Intelligent Remote Setup Dialog for Missing Git Remote**: When PR creation fails due to missing git remote, shows a smart setup dialog with two modes
+  - **Configured Repository Mode** (default): Shows the repository already configured in project settings
+    - Displays organization, project, and repository details with URL preview
+    - Primary "Use This Repository" button for one-click setup
+    - Secondary "Select Different Repository" option
+  - **Repository Selection Mode**: Live integration with Azure DevOps API
+    - Uses PAT from project settings to fetch real data
+    - Organization dropdown populated from Azure DevOps organizations
+    - Project dropdown filtered by selected organization
+    - Repository dropdown filtered by selected project
+    - Auto-selects configured values when switching to this mode
+    - Shows URL preview before adding
+  - After successful remote addition, automatically retries PR creation
+  - Provides clear guidance on what the action will do and why it's needed
+
+- **Azure DevOps PR Creation with PAT Authentication**: Complete fix for Azure DevOps PR creation flow
+  - Fixed PAT not loading in CreatePRDialog - was accessing non-existent `project.env` property, now correctly loads via IPC
+  - Fixed empty Organization dropdown in Add Remote Dialog - always calls `loadOrganizations()` to show proper error when PAT is missing
+  - Added PAT-based authentication for git push to Azure DevOps (embeds PAT in URL for authentication)
+  - Added Azure DevOps REST API for PR creation instead of relying on `gh` CLI (which only supports GitHub)
+  - Fixed git push hanging indefinitely when credentials were missing - added `GIT_TERMINAL_PROMPT=0` to fail fast
+  - Security improvements: PAT is never logged, not stored in git remote tracking
+  - Uses `DEFAULT_BRANCH` from project settings as PR target branch (strips `origin/` prefix automatically)
+
+---
+
 ## 2.7.4 - Terminal & Workflow Enhancements
 
 ### ✨ New Features

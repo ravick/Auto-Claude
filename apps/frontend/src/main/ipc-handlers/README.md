@@ -109,6 +109,54 @@ Project context and memory:
 
 ### Integration Modules
 
+#### `azure-devops/` (Directory)
+Azure DevOps integration with modular handlers:
+
+##### `auth-handlers.ts`
+Authentication and project setup operations:
+- `AZURE_DEVOPS_DETECT_REPO` - Detect ADO repo from git remote URL
+- `AZURE_DEVOPS_VALIDATE_PAT` - Validate Personal Access Token
+- `AZURE_DEVOPS_LIST_ORGANIZATIONS` - List accessible organizations
+- `AZURE_DEVOPS_LIST_PROJECTS_WITH_PAT` - List projects in organization
+- `AZURE_DEVOPS_LIST_REPOS_WITH_PAT` - List repos in project
+- `AZURE_DEVOPS_CREATE_REPO` - Create new repository
+- `AZURE_DEVOPS_ADD_REMOTE` - Add/update git remote
+- `AZURE_DEVOPS_GET_BRANCHES` - Get branches from repository
+
+##### `repository-handlers.ts`
+Repository and connection operations:
+- `AZURE_DEVOPS_CHECK_CONNECTION` - Test connection status
+- `AZURE_DEVOPS_GET_PROJECTS` - List projects (using stored config)
+- `AZURE_DEVOPS_GET_REPOSITORIES` - List repositories
+
+##### `work-item-handlers.ts`
+Work item operations:
+- `AZURE_DEVOPS_GET_WORK_ITEMS` - List work items with filtering/sorting
+- `AZURE_DEVOPS_GET_WORK_ITEM` - Get single work item
+- `AZURE_DEVOPS_INVESTIGATE_WORK_ITEM` - AI investigation
+
+##### `data-source-handlers.ts`
+Data source operations:
+- `AZURE_DEVOPS_GET_TEAMS` - List teams
+- `AZURE_DEVOPS_GET_BACKLOGS` - List backlogs
+- `AZURE_DEVOPS_GET_BACKLOG_WORK_ITEMS` - Get backlog items
+- `AZURE_DEVOPS_GET_SAVED_QUERIES` - List saved queries
+- `AZURE_DEVOPS_EXECUTE_SAVED_QUERY` - Execute saved query
+
+##### `pr-handlers.ts`
+Pull request operations:
+- `AZURE_DEVOPS_GET_PULL_REQUESTS` - List PRs
+- `AZURE_DEVOPS_GET_PULL_REQUEST` - Get single PR
+- `AZURE_DEVOPS_RUN_PR_REVIEW` - AI PR review
+- `AZURE_DEVOPS_POST_PR_COMMENT` - Post PR comment
+
+##### `import-handlers.ts`
+Import operations:
+- `AZURE_DEVOPS_IMPORT_WORK_ITEMS` - Import work items as tasks
+
+##### `investigation-handlers.ts`
+AI investigation with progress events
+
 #### `github-handlers.ts` (23KB)
 GitHub integration:
 - `GITHUB_GET_REPOSITORIES` - List repositories

@@ -288,6 +288,18 @@ export interface GitHubAPI {
   onPRReviewError: (
     callback: (projectId: string, error: { prNumber: number; error: string }) => void
   ) => IpcListenerCleanup;
+
+  // Issue sync operations (for external status sync)
+  updateIssueState: (
+    projectId: string,
+    issueNumber: number,
+    state: 'open' | 'closed'
+  ) => Promise<{ success: boolean; error?: string }>;
+  addIssueComment: (
+    projectId: string,
+    issueNumber: number,
+    body: string
+  ) => Promise<{ success: boolean; error?: string; commentId?: number }>;
 }
 
 /**
@@ -698,5 +710,20 @@ export const createGitHubAPI = (): GitHubAPI => ({
   onPRReviewError: (
     callback: (projectId: string, error: { prNumber: number; error: string }) => void
   ): IpcListenerCleanup =>
-    createIpcListener(IPC_CHANNELS.GITHUB_PR_REVIEW_ERROR, callback)
+    createIpcListener(IPC_CHANNELS.GITHUB_PR_REVIEW_ERROR, callback),
+
+  // Issue sync operations (for external status sync)
+  updateIssueState: (
+    projectId: string,
+    issueNumber: number,
+    state: 'open' | 'closed'
+  ): Promise<{ success: boolean; error?: string }> =>
+    invokeIpc(IPC_CHANNELS.GITHUB_UPDATE_ISSUE_STATE, projectId, issueNumber, state),
+
+  addIssueComment: (
+    projectId: string,
+    issueNumber: number,
+    body: string
+  ): Promise<{ success: boolean; error?: string; commentId?: number }> =>
+    invokeIpc(IPC_CHANNELS.GITHUB_ADD_ISSUE_COMMENT, projectId, issueNumber, body)
 });

@@ -226,8 +226,30 @@ const browserMockAPI: ElectronAPI = {
     approveBatches: async () => ({ success: true, batches: [] }),
     onAnalyzePreviewProgress: () => () => {},
     onAnalyzePreviewComplete: () => () => {},
-    onAnalyzePreviewError: () => () => {}
+    onAnalyzePreviewError: () => () => {},
+    // Issue sync operations (for external status sync)
+    updateIssueState: async () => ({ success: false, error: 'Not available in browser mock' }),
+    addIssueComment: async () => ({ success: false, error: 'Not available in browser mock' })
   },
+
+  // Azure DevOps Integration Operations
+  getAzureDevOpsProjects: async () => ({ success: true, data: [] }),
+  getAzureDevOpsRepositories: async () => ({ success: true, data: [] }),
+  getAzureDevOpsWorkItems: async () => ({ success: true, data: { items: [], total: 0, page: 1, pageSize: 50, hasMore: false } }),
+  getAzureDevOpsWorkItem: async () => ({ success: true, data: null as any }),
+  checkAzureDevOpsConnection: async () => ({ success: true, data: { connected: false } }),
+  investigateAzureDevOpsWorkItem: () => { console.warn('[Browser Mock] investigateAzureDevOpsWorkItem called'); },
+  importAzureDevOpsWorkItems: async () => ({ success: true, data: { success: true, imported: 0, failed: 0 } }),
+  getAzureDevOpsPullRequests: async () => ({ success: true, data: [] }),
+  getAzureDevOpsPullRequest: async () => ({ success: true, data: null as any }),
+  runAzureDevOpsPRReview: () => { console.warn('[Browser Mock] runAzureDevOpsPRReview called'); },
+  postAzureDevOpsPRComment: async () => ({ success: true, data: true }),
+  onAzureDevOpsInvestigationProgress: () => () => {},
+  onAzureDevOpsInvestigationComplete: () => () => {},
+  onAzureDevOpsInvestigationError: () => () => {},
+  onAzureDevOpsPRReviewProgress: () => () => {},
+  onAzureDevOpsPRReviewComplete: () => () => {},
+  onAzureDevOpsPRReviewError: () => () => {},
 
   // Claude Code Operations
   checkClaudeCodeVersion: async () => ({

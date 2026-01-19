@@ -303,7 +303,10 @@ def get_sdk_env_vars() -> dict[str, str]:
     Collects relevant env vars (ANTHROPIC_BASE_URL, etc.) that should
     be passed through to the claude-agent-sdk subprocess.
 
-    On Windows, auto-detects CLAUDE_CODE_GIT_BASH_PATH if not already set.
+    On Windows:
+    - Auto-detects CLAUDE_CODE_GIT_BASH_PATH if not already set
+    - Augments PATH with discovered tool locations (node, npm, python, etc.)
+      to handle MINGW64 Git Bash environments where tools aren't in PATH
 
     Returns:
         Dict of env var name -> value for non-empty vars
@@ -316,10 +319,20 @@ def get_sdk_env_vars() -> dict[str, str]:
 
     # On Windows, auto-detect git-bash path if not already set
     # Claude Code CLI requires bash.exe to run on Windows
-    if platform.system() == "Windows" and "CLAUDE_CODE_GIT_BASH_PATH" not in env:
-        bash_path = _find_git_bash_path()
-        if bash_path:
-            env["CLAUDE_CODE_GIT_BASH_PATH"] = bash_path
+    if platform.system() == "Windows":
+        if "CLAUDE_CODE_GIT_BASH_PATH" not in env:
+            bash_path = _find_git_bash_path()
+            if bash_path:
+                env["CLAUDE_CODE_GIT_BASH_PATH"] = bash_path
+
+        # Augment PATH with discovered tool locations (node, npm, python, etc.)
+        # This handles MINGW64 Git Bash environments where tools are installed
+        # but not accessible from the subprocess PATH
+        from core.tool_path_resolver import get_augmented_path
+
+        augmented_path = get_augmented_path()
+        if augmented_path:
+            env["PATH"] = augmented_path
 
     return env
 

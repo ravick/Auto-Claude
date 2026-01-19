@@ -16,6 +16,9 @@
     "resume": "Reprendre",
     "archive": "Archiver",
     "delete": "Supprimer",
+    "deleteTask": "Supprimer la tâche",
+    "syncToADO": "Synchroniser vers ADO",
+    "syncFromADO": "Synchroniser depuis ADO",
     "view": "Voir les détails",
     "viewPR": "Voir la PR",
     "moveTo": "Déplacer vers",
@@ -121,11 +124,30 @@
     "errorLoadingContent": "Échec du chargement du contenu du fichier",
     "retry": "Réessayer",
     "selectFile": "Sélectionnez un fichier pour voir son contenu",
-    "openInIDE": "Ouvrir dans l'IDE"
+    "openInIDE": "Ouvrir dans l'IDE",
+    "imageOpenedExternally": "Image ouverte dans la visionneuse système",
+    "openAgain": "Ouvrir à nouveau"
   },
   "metadata": {
     "severity": "sévérité",
-    "pullRequest": "Pull Request"
+    "pullRequest": "Pull Request",
+    "azureDevOpsWorkItem": "Élément de travail Azure DevOps"
+  },
+  "sync": {
+    "success": "Synchronisation réussie",
+    "successDescription": "Le statut de la tâche et les liens PR ont été synchronisés vers Azure DevOps.",
+    "failed": "Échec de la synchronisation",
+    "failedDescription": "Échec de la synchronisation de la tâche vers Azure DevOps. Veuillez réessayer.",
+    "fromADO": {
+      "success": "Synchronisation depuis ADO réussie",
+      "successDescription": "La tâche a été mise à jour avec les données d'Azure DevOps.",
+      "failed": "Échec de la synchronisation depuis ADO",
+      "failedDescription": "Échec de la synchronisation de la tâche depuis Azure DevOps. Veuillez réessayer.",
+      "dialogTitle": "Synchroniser depuis Azure DevOps",
+      "dialogDescription": "Cela récupérera les dernières données de l'élément de travail Azure DevOps et mettra à jour la tâche locale avec le Titre, la Description et les autres champs mappés selon le type d'élément de travail.",
+      "warningMessage": "Attention : Les données locales existantes seront écrasées.",
+      "confirmButton": "Synchroniser depuis ADO"
+    }
   },
   "images": {
     "removeImageAriaLabel": "Supprimer l'image {{filename}}",

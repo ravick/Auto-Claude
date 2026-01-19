@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { useCallback, useState } from 'react';
 import {
   Target,
   Bug,
@@ -15,7 +16,7 @@ import {
   Clock,
   ExternalLink
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Badge } from '../ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
@@ -46,6 +47,97 @@ const CategoryIcon: Record<TaskCategory, typeof Target> = {
   testing: FileCode
 };
 
+/**
+ * Component for rendering attachment images with proper error handling.
+ * Uses React state to track loading/error states to avoid DOM manipulation issues.
+ */
+function AttachmentImage({
+  src,
+  alt,
+  specsPath,
+  onOpenPath
+}: {
+  src: string;
+  alt: string;
+  specsPath?: string;
+  onOpenPath?: (path: string) => void;
+}) {
+  const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Build the resolved source URL
+  let resolvedSrc = src;
+  const isAttachment = src?.startsWith('attachments/');
+
+  if (isAttachment && specsPath) {
+    const absolutePath = `${specsPath}/${src}`.replace(/\\/g, '/');
+    resolvedSrc = `local-file://${absolutePath}`;
+    console.log('[AttachmentImage] Resolved path:', { src, specsPath, resolvedSrc });
+  }
+
+  // If no specsPath for attachment, show placeholder immediately
+  if (isAttachment && !specsPath) {
+    console.warn('[AttachmentImage] No specsPath for attachment:', src);
+    return (
+      <span
+        className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded inline-block my-2 cursor-pointer hover:bg-muted"
+        title={`Attachment: ${src}`}
+      >
+        [Image: {alt || src}]
+      </span>
+    );
+  }
+
+  // Show placeholder if image failed to load
+  if (hasError) {
+    return (
+      <span
+        className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded inline-block my-2 cursor-pointer hover:bg-muted"
+        onClick={() => {
+          if (isAttachment && specsPath && onOpenPath) {
+            const absolutePath = `${specsPath}/${src}`.replace(/\\/g, '/');
+            onOpenPath(absolutePath);
+          }
+        }}
+        title={`Click to open: ${alt || src}`}
+      >
+        [Image: {alt || src}]
+      </span>
+    );
+  }
+
+  return (
+    <>
+      {isLoading && (
+        <span className="text-xs text-muted-foreground bg-muted/30 px-2 py-1 rounded inline-block my-2 animate-pulse">
+          Loading image...
+        </span>
+      )}
+      <img
+        src={resolvedSrc}
+        alt={alt || ''}
+        className={cn(
+          'max-w-full h-auto rounded-md border border-border/50 my-2 cursor-pointer hover:opacity-90',
+          isLoading && 'hidden'
+        )}
+        style={{ maxHeight: '400px', objectFit: 'contain' }}
+        onLoad={() => setIsLoading(false)}
+        onError={() => {
+          console.error('[AttachmentImage] Failed to load:', resolvedSrc);
+          setHasError(true);
+          setIsLoading(false);
+        }}
+        onClick={() => {
+          if (isAttachment && specsPath && onOpenPath) {
+            const absolutePath = `${specsPath}/${src}`.replace(/\\/g, '/');
+            onOpenPath(absolutePath);
+          }
+        }}
+      />
+    </>
+  );
+}
+
 interface TaskMetadataProps {
   task: Task;
 }
@@ -60,6 +152,63 @@ export function TaskMetadata({ task }: TaskMetadataProps) {
     task.metadata.securitySeverity ||
     task.metadata.sourceType
   );
+
+  // Handle clicking on attachment links - open files in system viewer
+  const handleAttachmentClick = useCallback(async (href: string) => {
+    if (!href) return;
+
+    // Check if this is a relative attachment link
+    if (href.startsWith('attachments/') && task.specsPath) {
+      // Build absolute file path (handle both / and \ path separators)
+      const absolutePath = `${task.specsPath}/${href}`.replace(/\\/g, '/');
+      // Open with system default application
+      try {
+        await window.electronAPI?.openPath(absolutePath);
+      } catch (err) {
+        console.error('Failed to open attachment:', err);
+      }
+    } else if (href.startsWith('http://') || href.startsWith('https://')) {
+      // External URL - open in browser
+      window.electronAPI?.openExternal?.(href);
+    }
+  }, [task.specsPath]);
+
+  // Custom markdown components for proper link and image handling
+  const markdownComponents: Components = {
+    a: ({ href, children }) => {
+      const isAttachment = href?.startsWith('attachments/');
+      const isExternal = href?.startsWith('http://') || href?.startsWith('https://');
+
+      return (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (href) handleAttachmentClick(href);
+          }}
+          className={cn(
+            'inline-flex items-center gap-1 text-info hover:text-info/80 hover:underline cursor-pointer',
+            'bg-transparent border-none p-0 font-inherit text-inherit',
+            isAttachment && 'font-medium'
+          )}
+          title={isAttachment ? `Open attachment: ${href}` : href}
+        >
+          {children}
+          {isExternal && <ExternalLink className="h-3 w-3 inline-block ml-0.5" />}
+        </button>
+      );
+    },
+    // Custom img component using AttachmentImage for proper React state management
+    img: ({ src, alt }) => (
+      <AttachmentImage
+        src={src || ''}
+        alt={alt || ''}
+        specsPath={task.specsPath}
+        onOpenPath={(path) => window.electronAPI?.openPath(path)}
+      />
+    ),
+  };
 
   return (
     <div className="space-y-5">
@@ -144,10 +293,10 @@ export function TaskMetadata({ task }: TaskMetadataProps) {
       {task.description && (
         <div className="bg-muted/30 rounded-lg px-4 py-3 border border-border/50 overflow-hidden max-w-full">
           <div
-            className="prose prose-sm prose-invert max-w-none overflow-hidden prose-p:text-foreground/90 prose-p:leading-relaxed prose-headings:text-foreground prose-strong:text-foreground prose-li:text-foreground/90 prose-ul:my-2 prose-li:my-0.5 prose-a:break-all prose-pre:overflow-x-auto prose-img:max-w-full [&_img]:!max-w-full [&_img]:h-auto [&_code]:break-all [&_code]:whitespace-pre-wrap [&_*]:max-w-full"
+            className="prose prose-sm prose-invert max-w-none overflow-hidden prose-p:text-foreground/90 prose-p:leading-relaxed prose-headings:text-foreground prose-strong:text-foreground prose-li:text-foreground/90 prose-ul:my-2 prose-li:my-0.5 prose-pre:overflow-x-auto prose-img:max-w-full [&_img]:!max-w-full [&_img]:h-auto [&_code]:break-all [&_code]:whitespace-pre-wrap [&_*]:max-w-full prose-td:text-foreground/80 prose-th:text-foreground"
             style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
           >
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
               {task.description}
             </ReactMarkdown>
           </div>
@@ -202,6 +351,24 @@ export function TaskMetadata({ task }: TaskMetadataProps) {
                   <li key={idx}>{dep}</li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {/* Azure DevOps Work Item */}
+          {task.metadata.azureDevOpsUrl && (
+            <div>
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                <ListChecks className="h-3 w-3 text-blue-400" />
+                {t('tasks:metadata.azureDevOpsWorkItem')}
+              </h3>
+              <button
+                type="button"
+                onClick={() => window.electronAPI.openExternal(task.metadata!.azureDevOpsUrl!)}
+                className="text-sm text-info hover:underline flex items-center gap-1.5 bg-transparent border-none cursor-pointer p-0 text-left"
+              >
+                {task.metadata.azureDevOpsUrl}
+                <ExternalLink className="h-3 w-3" />
+              </button>
             </div>
           )}
 

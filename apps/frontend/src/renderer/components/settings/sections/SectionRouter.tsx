@@ -1,11 +1,13 @@
 import { useTranslation } from 'react-i18next';
-import type { Project, ProjectSettings as ProjectSettingsType, AutoBuildVersionInfo, ProjectEnvConfig, LinearSyncStatus, GitHubSyncStatus, GitLabSyncStatus } from '../../../../shared/types';
+import type { Project, ProjectSettings as ProjectSettingsType, AutoBuildVersionInfo, ProjectEnvConfig, LinearSyncStatus, GitHubSyncStatus, GitLabSyncStatus, AzureDevOpsSyncStatus } from '../../../../shared/types';
 import { SettingsSection } from '../SettingsSection';
 import { GeneralSettings } from '../../project-settings/GeneralSettings';
 import { SecuritySettings } from '../../project-settings/SecuritySettings';
 import { LinearIntegration } from '../integrations/LinearIntegration';
 import { GitHubIntegration } from '../integrations/GitHubIntegration';
 import { GitLabIntegration } from '../integrations/GitLabIntegration';
+import { AzureDevOpsIntegration } from '../integrations/AzureDevOpsIntegration';
+import { ExternalSyncSettings } from '../ExternalSyncSettings';
 import { InitializationGuard } from '../common/InitializationGuard';
 import type { ProjectSettingsSection } from '../ProjectSettingsContent';
 
@@ -33,6 +35,10 @@ interface SectionRouterProps {
   setShowGitLabToken: React.Dispatch<React.SetStateAction<boolean>>;
   gitLabConnectionStatus: GitLabSyncStatus | null;
   isCheckingGitLab: boolean;
+  showAzureDevOpsPat: boolean;
+  setShowAzureDevOpsPat: React.Dispatch<React.SetStateAction<boolean>>;
+  azureDevOpsConnectionStatus: AzureDevOpsSyncStatus | null;
+  isCheckingAzureDevOps: boolean;
   linearConnectionStatus: LinearSyncStatus | null;
   isCheckingLinear: boolean;
   handleInitialize: () => Promise<void>;
@@ -67,6 +73,10 @@ export function SectionRouter({
   setShowGitLabToken,
   gitLabConnectionStatus,
   isCheckingGitLab,
+  showAzureDevOpsPat,
+  setShowAzureDevOpsPat,
+  azureDevOpsConnectionStatus,
+  isCheckingAzureDevOps,
   linearConnectionStatus,
   isCheckingLinear,
   handleInitialize,
@@ -169,6 +179,33 @@ export function SectionRouter({
         </SettingsSection>
       );
 
+    case 'azure-devops':
+      return (
+        <SettingsSection
+          title={t('projectSections.azure-devops.integrationTitle')}
+          description={t('projectSections.azure-devops.integrationDescription')}
+        >
+          <InitializationGuard
+            initialized={!!project.autoBuildPath}
+            title={t('projectSections.azure-devops.integrationTitle')}
+            description={t('projectSections.azure-devops.syncDescription')}
+          >
+            <AzureDevOpsIntegration
+              envConfig={envConfig}
+              updateEnvConfig={updateEnvConfig}
+              showAzureDevOpsPat={showAzureDevOpsPat}
+              setShowAzureDevOpsPat={setShowAzureDevOpsPat}
+              azureDevOpsConnectionStatus={azureDevOpsConnectionStatus}
+              isCheckingAzureDevOps={isCheckingAzureDevOps}
+              projectPath={project.path}
+              projectId={project.id}
+              settings={settings}
+              setSettings={setSettings}
+            />
+          </InitializationGuard>
+        </SettingsSection>
+      );
+
     case 'memory':
       return (
         <SettingsSection
@@ -192,6 +229,15 @@ export function SectionRouter({
             />
           </InitializationGuard>
         </SettingsSection>
+      );
+
+    case 'sync':
+      return (
+        <ExternalSyncSettings
+          projectId={project.id}
+          envConfig={envConfig}
+          isOpen={true}
+        />
       );
 
     default:

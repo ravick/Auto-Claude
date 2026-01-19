@@ -127,7 +127,23 @@ import type {
   GitLabInvestigationStatus,
   GitLabMRReviewResult,
   GitLabMRReviewProgress,
-  GitLabNewCommitsCheck
+  GitLabNewCommitsCheck,
+  AzureDevOpsProject,
+  AzureDevOpsRepository,
+  AzureDevOpsWorkItem,
+  AzureDevOpsWorkItemsResult,
+  AzureDevOpsPullRequest,
+  AzureDevOpsSyncStatus,
+  AzureDevOpsImportResult,
+  AzureDevOpsInvestigationResult,
+  AzureDevOpsInvestigationStatus,
+  AzureDevOpsPRReviewResult,
+  AzureDevOpsPRReviewProgress,
+  AzureDevOpsTeam,
+  AzureDevOpsBacklog,
+  AzureDevOpsSavedQuery,
+  AzureDevOpsRepoInfo,
+  AzureDevOpsOrganization
 } from './integrations';
 import type { APIProfile, ProfilesFile, TestConnectionResult, DiscoverModelsResult } from './profile';
 
@@ -163,6 +179,7 @@ export interface ElectronAPI {
   updateTaskStatus: (taskId: string, status: TaskStatus, options?: { forceCleanup?: boolean }) => Promise<IPCResult & { worktreeExists?: boolean; worktreePath?: string }>;
   recoverStuckTask: (taskId: string, options?: TaskRecoveryOptions) => Promise<IPCResult<TaskRecoveryResult>>;
   checkTaskRunning: (taskId: string) => Promise<IPCResult<boolean>>;
+  reportStuckTask: (taskId: string, context?: { phase?: string; completedSubtasks?: number; totalSubtasks?: number; currentSubtask?: string }) => Promise<IPCResult<{ reported: boolean; externalId?: number }>>;
 
   // Workspace management (for human review)
   // Per-spec architecture: Each spec has its own worktree at .worktrees/{spec-name}/
@@ -537,6 +554,82 @@ export interface ElectronAPI {
     callback: (projectId: string, error: string) => void
   ) => () => void;
 
+  // Azure DevOps Auth/Setup operations
+  detectAzureDevOpsRepo: (projectPath: string) => Promise<IPCResult<AzureDevOpsRepoInfo>>;
+  validateAzureDevOpsPat: (pat: string, organization?: string) => Promise<IPCResult<{ valid: boolean; username?: string; error?: string }>>;
+  listAzureDevOpsOrganizations: (pat: string) => Promise<IPCResult<AzureDevOpsOrganization[]>>;
+  listAzureDevOpsProjectsWithPat: (pat: string, organization: string) => Promise<IPCResult<AzureDevOpsProject[]>>;
+  listAzureDevOpsReposWithPat: (pat: string, organization: string, project: string) => Promise<IPCResult<AzureDevOpsRepository[]>>;
+  createAzureDevOpsRepo: (pat: string, organization: string, project: string, repoName: string) => Promise<IPCResult<{ id: string; name: string; remoteUrl: string }>>;
+  addAzureDevOpsRemote: (projectPath: string, organization: string, project: string, repo: string) => Promise<IPCResult<{ remoteUrl: string }>>;
+  getAzureDevOpsBranches: (organization: string, project: string, repo: string, pat: string) => Promise<IPCResult<string[]>>;
+  initializeAzureDevOpsRepo: (organization: string, project: string, repo: string, branchName: string, pat: string) => Promise<IPCResult<{ branchName: string }>>;
+
+  // Azure DevOps integration operations
+  getAzureDevOpsProjects: (projectId: string) => Promise<IPCResult<AzureDevOpsProject[]>>;
+  getAzureDevOpsRepositories: (projectId: string) => Promise<IPCResult<AzureDevOpsRepository[]>>;
+  getAzureDevOpsWorkItems: (
+    projectId: string,
+    state?: 'open' | 'closed' | 'all',
+    options?: {
+      sortBy?: 'changedDate' | 'createdDate' | 'title' | 'state' | 'priority' | 'workItemType';
+      sortOrder?: 'asc' | 'desc';
+      page?: number;
+      pageSize?: number;
+    }
+  ) => Promise<IPCResult<AzureDevOpsWorkItemsResult>>;
+  getAzureDevOpsWorkItem: (projectId: string, workItemId: number) => Promise<IPCResult<AzureDevOpsWorkItem>>;
+  checkAzureDevOpsConnection: (projectId: string) => Promise<IPCResult<AzureDevOpsSyncStatus>>;
+  investigateAzureDevOpsWorkItem: (projectId: string, workItemId: number) => void;
+  importAzureDevOpsWorkItems: (projectId: string, workItemIds: number[]) => Promise<IPCResult<AzureDevOpsImportResult>>;
+
+  // Azure DevOps data source operations (teams, backlogs, saved queries)
+  getAzureDevOpsTeams: (projectId: string) => Promise<IPCResult<AzureDevOpsTeam[]>>;
+  getAzureDevOpsBacklogs: (projectId: string, teamName?: string) => Promise<IPCResult<AzureDevOpsBacklog[]>>;
+  getAzureDevOpsBacklogWorkItems: (projectId: string, backlogId: string, teamName?: string, state?: 'open' | 'closed' | 'all') => Promise<IPCResult<AzureDevOpsWorkItem[]>>;
+  getAzureDevOpsSavedQueries: (projectId: string) => Promise<IPCResult<AzureDevOpsSavedQuery[]>>;
+  executeAzureDevOpsSavedQuery: (projectId: string, queryId: string, state?: 'open' | 'closed' | 'all') => Promise<IPCResult<AzureDevOpsWorkItem[]>>;
+
+  // Azure DevOps Pull Request operations
+  getAzureDevOpsPullRequests: (projectId: string, state?: 'active' | 'completed' | 'abandoned' | 'all') => Promise<IPCResult<AzureDevOpsPullRequest[]>>;
+  getAzureDevOpsPullRequest: (projectId: string, pullRequestId: number) => Promise<IPCResult<AzureDevOpsPullRequest>>;
+  runAzureDevOpsPRReview: (projectId: string, pullRequestId: number) => void;
+  postAzureDevOpsPRComment: (projectId: string, pullRequestId: number, content: string, filePath?: string, line?: number) => Promise<IPCResult<boolean>>;
+
+  // Azure DevOps Work Item Sync operations (for external status sync)
+  updateAzureDevOpsWorkItemState: (
+    projectId: string,
+    workItemId: number,
+    state: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  getAzureDevOpsWorkItemTypes: (
+    projectId: string
+  ) => Promise<{ success: boolean; types?: import('./sync').ADOWorkItemType[]; error?: string }>;
+  getAzureDevOpsWorkItemStates: (
+    projectId: string,
+    workItemType: string
+  ) => Promise<{ success: boolean; states?: import('./sync').ADOWorkItemState[]; error?: string }>;
+
+  // Azure DevOps event listeners
+  onAzureDevOpsInvestigationProgress: (
+    callback: (projectId: string, status: AzureDevOpsInvestigationStatus) => void
+  ) => () => void;
+  onAzureDevOpsInvestigationComplete: (
+    callback: (projectId: string, result: AzureDevOpsInvestigationResult) => void
+  ) => () => void;
+  onAzureDevOpsInvestigationError: (
+    callback: (projectId: string, error: string) => void
+  ) => () => void;
+  onAzureDevOpsPRReviewProgress: (
+    callback: (projectId: string, progress: AzureDevOpsPRReviewProgress) => void
+  ) => () => void;
+  onAzureDevOpsPRReviewComplete: (
+    callback: (projectId: string, result: AzureDevOpsPRReviewResult) => void
+  ) => () => void;
+  onAzureDevOpsPRReviewError: (
+    callback: (projectId: string, error: string) => void
+  ) => () => void;
+
   // Release operations
   getReleaseableVersions: (projectId: string) => Promise<IPCResult<ReleaseableVersion[]>>;
   runReleasePreflightCheck: (projectId: string, version: string) => Promise<IPCResult<ReleasePreflightStatus>>;
@@ -613,6 +706,7 @@ export interface ElectronAPI {
   // Shell operations
   openExternal: (url: string) => Promise<void>;
   openTerminal: (dirPath: string) => Promise<IPCResult<void>>;
+  openPath: (filePath: string) => Promise<IPCResult<string>>;
 
   // Auto Claude source environment operations
   getSourceEnv: () => Promise<IPCResult<SourceEnvConfig>>;
@@ -798,6 +892,12 @@ export interface ElectronAPI {
   // MCP Server health check operations
   checkMcpHealth: (server: CustomMcpServer) => Promise<IPCResult<McpHealthCheckResult>>;
   testMcpConnection: (server: CustomMcpServer) => Promise<IPCResult<McpTestConnectionResult>>;
+
+  // External Sync operations (sync task status to GitHub/Azure DevOps)
+  getSyncConfig: (projectId: string) => Promise<{ success: boolean; config?: import('./sync').ExternalSyncConfig; error?: string }>;
+  saveSyncConfig: (projectId: string, config: import('./sync').ExternalSyncConfig) => Promise<{ success: boolean; error?: string }>;
+  manualSync: (taskId: string) => Promise<{ success: boolean; results?: import('./sync').ExternalSyncResult[]; error?: string }>;
+  syncFromADO: (taskId: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {

@@ -15,6 +15,8 @@
     "githubPRs": "GitHub PRs",
     "gitlabIssues": "GitLab Issues",
     "gitlabMRs": "GitLab MRs",
+    "azureDevOpsWorkItems": "Azure DevOps Work Items",
+    "azureDevOpsPRs": "Azure DevOps PRs",
     "worktrees": "Worktrees",
     "agentTools": "MCP Overview"
   },
@@ -29,6 +31,10 @@
   },
   "messages": {
     "initializeToCreateTasks": "Initialize Auto Claude to create tasks"
+  },
+  "sidebar": {
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar"
   },
   "claudeCode": {
     "checking": "Checking Claude Code...",

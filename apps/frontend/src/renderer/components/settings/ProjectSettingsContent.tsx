@@ -10,7 +10,7 @@ import { SectionRouter } from './sections/SectionRouter';
 import { createHookProxy } from './utils/hookProxyFactory';
 import type { Project } from '../../../shared/types';
 
-export type ProjectSettingsSection = 'general' | 'linear' | 'github' | 'gitlab' | 'memory';
+export type ProjectSettingsSection = 'general' | 'linear' | 'github' | 'gitlab' | 'azure-devops' | 'memory' | 'sync';
 
 interface ProjectSettingsContentProps {
   project: Project | undefined;
@@ -98,6 +98,10 @@ function ProjectSettingsContentInner({
     setShowGitLabToken,
     gitLabConnectionStatus,
     isCheckingGitLab,
+    showAzureDevOpsPat,
+    setShowAzureDevOpsPat,
+    azureDevOpsConnectionStatus,
+    isCheckingAzureDevOps,
     showLinearImportModal,
     setShowLinearImportModal,
     linearConnectionStatus,
@@ -144,6 +148,10 @@ function ProjectSettingsContentInner({
         setShowGitLabToken={setShowGitLabToken}
         gitLabConnectionStatus={gitLabConnectionStatus}
         isCheckingGitLab={isCheckingGitLab}
+        showAzureDevOpsPat={showAzureDevOpsPat}
+        setShowAzureDevOpsPat={setShowAzureDevOpsPat}
+        azureDevOpsConnectionStatus={azureDevOpsConnectionStatus}
+        isCheckingAzureDevOps={isCheckingAzureDevOps}
         linearConnectionStatus={linearConnectionStatus}
         isCheckingLinear={isCheckingLinear}
         handleInitialize={handleInitialize}

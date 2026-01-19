@@ -27,6 +27,7 @@ export const IPC_CHANNELS = {
   TASK_UPDATE_STATUS: 'task:updateStatus',
   TASK_RECOVER_STUCK: 'task:recoverStuck',
   TASK_CHECK_RUNNING: 'task:checkRunning',
+  TASK_REPORT_STUCK: 'task:reportStuck',  // Report stuck task status to external systems (ADO)
 
   // Workspace management (for human review)
   // Per-spec architecture: Each spec has its own worktree at .worktrees/{spec-name}/
@@ -148,6 +149,7 @@ export const IPC_CHANNELS = {
   // Shell operations
   SHELL_OPEN_EXTERNAL: 'shell:openExternal',
   SHELL_OPEN_TERMINAL: 'shell:openTerminal',
+  SHELL_OPEN_PATH: 'shell:openPath',
 
   // Roadmap operations
   ROADMAP_GET: 'roadmap:get',
@@ -401,6 +403,63 @@ export const IPC_CHANNELS = {
   GITHUB_TRIAGE_PROGRESS: 'github:triage:progress',
   GITHUB_TRIAGE_COMPLETE: 'github:triage:complete',
   GITHUB_TRIAGE_ERROR: 'github:triage:error',
+
+  // Azure DevOps integration
+  AZURE_DEVOPS_GET_PROJECTS: 'azureDevOps:getProjects',
+  AZURE_DEVOPS_GET_REPOSITORIES: 'azureDevOps:getRepositories',
+  AZURE_DEVOPS_GET_WORK_ITEMS: 'azureDevOps:getWorkItems',
+  AZURE_DEVOPS_GET_WORK_ITEM: 'azureDevOps:getWorkItem',
+  AZURE_DEVOPS_CHECK_CONNECTION: 'azureDevOps:checkConnection',
+  AZURE_DEVOPS_INVESTIGATE_WORK_ITEM: 'azureDevOps:investigateWorkItem',
+  AZURE_DEVOPS_IMPORT_WORK_ITEMS: 'azureDevOps:importWorkItems',
+
+  // Azure DevOps PR operations
+  AZURE_DEVOPS_PR_LIST: 'azureDevOps:pr:list',
+  AZURE_DEVOPS_PR_GET: 'azureDevOps:pr:get',
+  AZURE_DEVOPS_PR_GET_DIFF: 'azureDevOps:pr:getDiff',
+  AZURE_DEVOPS_PR_REVIEW: 'azureDevOps:pr:review',
+  AZURE_DEVOPS_PR_POST_COMMENT: 'azureDevOps:pr:postComment',
+
+  // Azure DevOps Data Sources
+  AZURE_DEVOPS_GET_TEAMS: 'azureDevOps:getTeams',
+  AZURE_DEVOPS_GET_BACKLOGS: 'azureDevOps:getBacklogs',
+  AZURE_DEVOPS_GET_BACKLOG_WORK_ITEMS: 'azureDevOps:getBacklogWorkItems',
+  AZURE_DEVOPS_GET_SAVED_QUERIES: 'azureDevOps:getSavedQueries',
+  AZURE_DEVOPS_EXECUTE_SAVED_QUERY: 'azureDevOps:executeSavedQuery',
+
+  // Azure DevOps Auth/Setup Channels
+  AZURE_DEVOPS_DETECT_REPO: 'azureDevOps:detectRepo',
+  AZURE_DEVOPS_VALIDATE_PAT: 'azureDevOps:validatePat',
+  AZURE_DEVOPS_LIST_ORGANIZATIONS: 'azureDevOps:listOrganizations',
+  AZURE_DEVOPS_ADD_REMOTE: 'azureDevOps:addRemote',
+  AZURE_DEVOPS_GET_BRANCHES: 'azureDevOps:getBranches',
+  AZURE_DEVOPS_CREATE_REPO: 'azureDevOps:createRepo',
+  AZURE_DEVOPS_LIST_PROJECTS_WITH_PAT: 'azureDevOps:listProjectsWithPat',
+  AZURE_DEVOPS_LIST_REPOS_WITH_PAT: 'azureDevOps:listReposWithPat',
+  AZURE_DEVOPS_INITIALIZE_REPO: 'azureDevOps:initializeRepo',
+
+  // Azure DevOps events (main -> renderer)
+  AZURE_DEVOPS_INVESTIGATION_PROGRESS: 'azureDevOps:investigationProgress',
+  AZURE_DEVOPS_INVESTIGATION_COMPLETE: 'azureDevOps:investigationComplete',
+  AZURE_DEVOPS_INVESTIGATION_ERROR: 'azureDevOps:investigationError',
+  AZURE_DEVOPS_PR_REVIEW_PROGRESS: 'azureDevOps:pr:reviewProgress',
+  AZURE_DEVOPS_PR_REVIEW_COMPLETE: 'azureDevOps:pr:reviewComplete',
+  AZURE_DEVOPS_PR_REVIEW_ERROR: 'azureDevOps:pr:reviewError',
+
+  // Azure DevOps Work Item Sync operations
+  AZURE_DEVOPS_UPDATE_WORK_ITEM_STATE: 'azureDevOps:updateWorkItemState',
+  AZURE_DEVOPS_GET_WORK_ITEM_TYPES: 'azureDevOps:getWorkItemTypes',
+  AZURE_DEVOPS_GET_WORK_ITEM_STATES: 'azureDevOps:getWorkItemStates',
+
+  // GitHub Issue Sync operations
+  GITHUB_UPDATE_ISSUE_STATE: 'github:updateIssueState',
+  GITHUB_ADD_ISSUE_COMMENT: 'github:addIssueComment',
+
+  // External Sync configuration
+  EXTERNAL_SYNC_GET_CONFIG: 'externalSync:getConfig',
+  EXTERNAL_SYNC_SAVE_CONFIG: 'externalSync:saveConfig',
+  EXTERNAL_SYNC_MANUAL: 'externalSync:manualSync',  // Manual sync with PR linking
+  EXTERNAL_SYNC_FROM_ADO: 'externalSync:syncFromADO',  // Sync task data from Azure DevOps work item
 
   // Memory Infrastructure status (LadybugDB - no Docker required)
   MEMORY_STATUS: 'memory:status',

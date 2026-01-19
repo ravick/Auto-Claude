@@ -590,7 +590,7 @@ export function KanbanBoard({ tasks, onTaskClick, onNewTaskClick, onRefresh, isR
         onDragEnd={handleDragEnd}
       >
         <div className="flex flex-1 gap-4 overflow-x-auto p-6">
-          {TASK_STATUS_COLUMNS.map((status) => (
+          {TASK_STATUS_COLUMNS.filter(status => status !== 'error' || tasksByStatus[status].length > 0).map((status) => (
             <DroppableColumn
               key={status}
               status={status}

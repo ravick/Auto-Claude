@@ -528,6 +528,50 @@ export function registerSettingsHandlers(
     }
   );
 
+  ipcMain.handle(
+    IPC_CHANNELS.SHELL_OPEN_PATH,
+    async (_, filePath: string): Promise<IPCResult<string>> => {
+      try {
+        // Validate filePath input
+        if (!filePath || typeof filePath !== 'string' || filePath.trim() === '') {
+          return {
+            success: false,
+            error: 'File path is required and must be a non-empty string'
+          };
+        }
+
+        // Resolve to absolute path
+        const resolvedPath = path.resolve(filePath);
+
+        // Verify path exists
+        if (!existsSync(resolvedPath)) {
+          return {
+            success: false,
+            error: `Path does not exist: ${resolvedPath}`
+          };
+        }
+
+        // Open with system default application
+        const errorMessage = await shell.openPath(resolvedPath);
+
+        if (errorMessage) {
+          return {
+            success: false,
+            error: `Failed to open path: ${errorMessage}`
+          };
+        }
+
+        return { success: true, data: resolvedPath };
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        return {
+          success: false,
+          error: `Failed to open path: ${errorMsg}`
+        };
+      }
+    }
+  );
+
   // ============================================
   // Auto-Build Source Environment Operations
   // ============================================

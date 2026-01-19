@@ -24,6 +24,9 @@ project-settings/
 ├── index.ts                          # Barrel export for all components
 ├── AutoBuildIntegration.tsx          # Auto-Build setup and status
 ├── ClaudeAuthSection.tsx             # Claude authentication configuration
+├── ClaudeOAuthFlow.tsx               # Claude OAuth authentication flow
+├── GitHubOAuthFlow.tsx               # GitHub OAuth authentication flow
+├── AzureDevOpsPATFlow.tsx            # Azure DevOps PAT authentication flow
 ├── LinearIntegrationSection.tsx      # Linear project management integration
 ├── GitHubIntegrationSection.tsx      # GitHub issues integration
 ├── MemoryBackendSection.tsx          # Graphiti/file-based memory configuration
@@ -115,6 +118,43 @@ hooks/
 - Configure GitHub PAT and repository
 - Display connection status
 - Manage auto-sync settings
+
+### Authentication Flow Components
+
+#### ClaudeOAuthFlow.tsx
+**Purpose**: Guides users through Claude OAuth authentication.
+**Props**:
+- `onSuccess`: Callback when authentication succeeds
+- `onCancel`: Optional cancel handler
+
+**Responsibilities**:
+- Display Claude CLI authentication steps
+- Handle OAuth flow via terminal
+- Show success/error states
+
+#### GitHubOAuthFlow.tsx
+**Purpose**: Guides users through GitHub OAuth device flow authentication.
+**Props**:
+- `onSuccess`: Callback with token and username when auth succeeds
+- `onCancel`: Optional cancel handler
+
+**Responsibilities**:
+- Initiate GitHub device code flow via gh CLI
+- Display device code and verification URL
+- Poll for authentication completion
+- Show success/error states
+
+#### AzureDevOpsPATFlow.tsx
+**Purpose**: Guides users through Azure DevOps PAT-based authentication.
+**Props**:
+- `onSuccess`: Callback with PAT and username when validation succeeds
+- `onCancel`: Optional cancel handler
+
+**Responsibilities**:
+- Display PAT input with show/hide toggle
+- Link to Azure DevOps PAT creation page
+- Validate PAT against Azure DevOps API
+- Show validation status and user info on success
 
 #### MemoryBackendSection.tsx
 **Purpose**: Configures memory backend (Graphiti vs file-based).

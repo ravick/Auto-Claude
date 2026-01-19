@@ -16,6 +16,9 @@
     "resume": "Resume",
     "archive": "Archive",
     "delete": "Delete",
+    "deleteTask": "Delete Task",
+    "syncToADO": "Sync to ADO",
+    "syncFromADO": "Sync from ADO",
     "view": "View Details",
     "viewPR": "View PR",
     "moveTo": "Move to",
@@ -121,11 +124,30 @@
     "errorLoadingContent": "Failed to load file content",
     "retry": "Retry",
     "selectFile": "Select a file to view its contents",
-    "openInIDE": "Open in IDE"
+    "openInIDE": "Open in IDE",
+    "imageOpenedExternally": "Image opened in system viewer",
+    "openAgain": "Open Again"
   },
   "metadata": {
     "severity": "severity",
-    "pullRequest": "Pull Request"
+    "pullRequest": "Pull Request",
+    "azureDevOpsWorkItem": "Azure DevOps Work Item"
+  },
+  "sync": {
+    "success": "Sync Successful",
+    "successDescription": "Task status and PR links have been synced to Azure DevOps.",
+    "failed": "Sync Failed",
+    "failedDescription": "Failed to sync task to Azure DevOps. Please try again.",
+    "fromADO": {
+      "success": "Sync from ADO Successful",
+      "successDescription": "Task has been updated with data from Azure DevOps.",
+      "failed": "Sync from ADO Failed",
+      "failedDescription": "Failed to sync task from Azure DevOps. Please try again.",
+      "dialogTitle": "Sync from Azure DevOps",
+      "dialogDescription": "This will fetch the latest data from the Azure DevOps work item and update the local task with the Title, Description, and other mapped fields based on the work item type.",
+      "warningMessage": "Warning: Existing local data will be overwritten.",
+      "confirmButton": "Sync from ADO"
+    }
   },
   "images": {
     "removeImageAriaLabel": "Remove image {{filename}}",

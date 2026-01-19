@@ -15,6 +15,8 @@ modules/
 ├── changelog-api.ts      # Changelog generation and versioning
 ├── linear-api.ts         # Linear issue tracking integration
 ├── github-api.ts         # GitHub integration (issues, releases)
+├── gitlab-api.ts         # GitLab integration (issues, MRs)
+├── azure-devops-api.ts   # Azure DevOps integration (work items, PRs, auth/setup)
 ├── autobuild-api.ts      # Auto-build source update management
 ├── shell-api.ts          # Shell operations (e.g., opening URLs)
 └── index.ts              # Barrel export for easy imports

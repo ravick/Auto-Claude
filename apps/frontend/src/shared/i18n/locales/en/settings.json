@@ -344,12 +344,25 @@
       "integrationDescription": "Connect to GitLab for issue tracking",
       "syncDescription": "Sync with GitLab Issues"
     },
+    "azure-devops": {
+      "title": "Azure DevOps",
+      "description": "Azure DevOps work items sync",
+      "integrationTitle": "Azure DevOps Integration",
+      "integrationDescription": "Connect to Azure DevOps for work item tracking",
+      "syncDescription": "Sync with Azure DevOps Work Items"
+    },
     "memory": {
       "title": "Memory",
       "description": "Graphiti memory backend",
       "integrationTitle": "Memory",
       "integrationDescription": "Configure persistent cross-session memory for agents",
       "syncDescription": "Configure persistent memory"
+    },
+    "sync": {
+      "title": "Status Sync",
+      "description": "Sync task status externally",
+      "integrationTitle": "External Status Sync",
+      "integrationDescription": "Automatically sync task status changes to GitHub and Azure DevOps"
     }
   },
   "agentProfile": {
@@ -576,6 +589,60 @@
       "createAnthropicKey": "Create Anthropic API Key",
       "openai": "This looks like an OpenAI API. You'll need an API key.",
       "createOpenaiKey": "Create OpenAI API Key"
+    }
+  },
+  "externalSync": {
+    "title": "External Status Sync",
+    "description": "Automatically update linked items when tasks change status",
+    "enabled": "Enable external status sync",
+    "enabledDescription": "Sync task status changes to linked GitHub Issues and Azure DevOps Work Items",
+    "noIntegrationsConfigured": "Configure GitHub or Azure DevOps integration first to enable status sync.",
+    "github": {
+      "title": "GitHub Issues",
+      "syncEnabled": "Sync to GitHub Issues",
+      "description": "Close issues when tasks are marked done, reopen when moved back to backlog",
+      "notConfigured": "GitHub integration not configured. Enable it in the GitHub settings section."
+    },
+    "azureDevOps": {
+      "title": "Azure DevOps Work Items",
+      "syncEnabled": "Sync to Azure DevOps Work Items",
+      "description": "Update work item state when tasks change status",
+      "notConfigured": "Azure DevOps integration not configured. Enable it in the Azure DevOps settings section.",
+      "configureMapping": "Configure Status Mapping",
+      "mapping": {
+        "title": "Status Mapping",
+        "description": "Map Auto-Claude statuses to Azure DevOps states for each work item type",
+        "workItemType": "Work Item Type",
+        "backlog": "Backlog",
+        "backlogHint": "(backlog)",
+        "in_progress": "In Progress",
+        "in_progressHint": "(in_progress, ai_review, human_review)",
+        "done": "Done",
+        "doneHint": "(done, pr_created)",
+        "fetchStates": "Fetch States",
+        "refreshTypes": "Refresh Types",
+        "resetToDefaults": "Reset to Defaults",
+        "resetAllToDefaults": "Reset All to Defaults",
+        "addWorkItemType": "Add Work Item Type",
+        "addManualType": "Add custom type...",
+        "enterTypeName": "Enter work item type name (e.g., Bug, Task)",
+        "enterStateName": "Enter state name (e.g., New, Active, Closed)",
+        "addState": "Add State",
+        "cancel": "Cancel",
+        "noStatesFound": "No states found. Click 'Fetch States' to load.",
+        "noTypesConfigured": "No work item types configured. Add one to customize status mapping.",
+        "selectState": "Select state",
+        "customized": "Customized",
+        "remove": "Remove",
+        "save": "Save Mapping"
+      }
+    },
+    "toast": {
+      "enabled": "External sync enabled",
+      "disabled": "External sync disabled",
+      "githubEnabled": "GitHub sync enabled",
+      "githubDisabled": "GitHub sync disabled",
+      "mappingSaved": "Status mapping saved"
     }
   }
 }

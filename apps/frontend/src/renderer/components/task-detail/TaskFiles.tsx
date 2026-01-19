@@ -3,11 +3,15 @@ import { useTranslation } from 'react-i18next';
 import {
   FileText,
   FileJson,
+  FileImage,
+  Folder,
+  FolderOpen as FolderOpenIcon,
   Loader2,
   AlertCircle,
   FolderOpen,
   RefreshCw,
   ChevronRight,
+  ChevronDown,
   ExternalLink
 } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
@@ -23,14 +27,32 @@ interface TaskFilesProps {
 }
 
 // File extensions to display
-const ALLOWED_EXTENSIONS = ['.md', '.json'];
+const ALLOWED_EXTENSIONS = ['.md', '.json', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.pdf'];
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp'];
 
 // Get icon for file type
-function getFileIcon(filename: string) {
+function getFileIcon(filename: string, isDirectory?: boolean) {
+  if (isDirectory) {
+    return <Folder className="h-4 w-4 text-amber-400" />;
+  }
   if (filename.endsWith('.json')) {
     return <FileJson className="h-4 w-4 text-amber-500" />;
   }
+  if (IMAGE_EXTENSIONS.some(ext => filename.toLowerCase().endsWith(ext))) {
+    return <FileImage className="h-4 w-4 text-purple-500" />;
+  }
   return <FileText className="h-4 w-4 text-blue-500" />;
+}
+
+// Check if a file is an image
+function isImageFile(filename: string): boolean {
+  return IMAGE_EXTENSIONS.some(ext => filename.toLowerCase().endsWith(ext));
+}
+
+// Extended FileNode with children for directories
+interface ExtendedFileNode extends FileNode {
+  children?: ExtendedFileNode[];
+  isExpanded?: boolean;
 }
 
 export function TaskFiles({ task }: TaskFilesProps) {
@@ -38,18 +60,35 @@ export function TaskFiles({ task }: TaskFilesProps) {
   const { settings } = useSettingsStore();
 
   // State for file listing
-  const [files, setFiles] = useState<FileNode[]>([]);
+  const [files, setFiles] = useState<ExtendedFileNode[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['attachments'])); // Auto-expand attachments
 
   // State for file content
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
 
   // Ref for keyboard navigation
   const fileListRef = useRef<HTMLDivElement>(null);
+
+  // Load directory contents (used for both root and subdirectories)
+  const loadDirectoryContents = useCallback(async (dirPath: string): Promise<ExtendedFileNode[]> => {
+    const result = await window.electronAPI.listDirectory(dirPath);
+    if (!result.success || !result.data) {
+      throw new Error(result.error || 'Failed to load directory');
+    }
+
+    // Filter to show allowed file types AND directories (like attachments)
+    const filteredFiles = result.data.filter(
+      (file) => file.isDirectory || ALLOWED_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext))
+    );
+
+    return filteredFiles;
+  }, []);
 
   // Load files from spec directory
   const loadFiles = useCallback(async () => {
@@ -59,30 +98,57 @@ export function TaskFiles({ task }: TaskFilesProps) {
     setFilesError(null);
 
     try {
-      const result = await window.electronAPI.listDirectory(task.specsPath);
-      if (!result.success || !result.data) {
-        throw new Error(result.error || 'Failed to load directory');
-      }
+      const rootFiles = await loadDirectoryContents(task.specsPath);
 
-      // Filter to only show allowed file types
-      const filteredFiles = result.data.filter(
-        (file) => !file.isDirectory && ALLOWED_EXTENSIONS.some(ext => file.name.endsWith(ext))
+      // Load attachments directory contents if it exists
+      const filesWithChildren: ExtendedFileNode[] = await Promise.all(
+        rootFiles.map(async (file) => {
+          if (file.isDirectory && file.name === 'attachments') {
+            try {
+              const children = await loadDirectoryContents(file.path);
+              return { ...file, children, isExpanded: true };
+            } catch {
+              return { ...file, children: [], isExpanded: true };
+            }
+          }
+          return file;
+        })
       );
 
-      // Sort files: spec.md first, then alphabetically
-      filteredFiles.sort((a, b) => {
+      // Sort files: directories first, then spec.md, then alphabetically
+      filesWithChildren.sort((a, b) => {
+        // Directories first
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        // spec.md first among files
         if (a.name === 'spec.md') return -1;
         if (b.name === 'spec.md') return 1;
+        // TASK.md second
+        if (a.name === 'TASK.md') return -1;
+        if (b.name === 'TASK.md') return 1;
         return a.name.localeCompare(b.name);
       });
 
-      setFiles(filteredFiles);
+      setFiles(filesWithChildren);
     } catch (err) {
       setFilesError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setIsLoadingFiles(false);
     }
-  }, [task.specsPath]);
+  }, [task.specsPath, loadDirectoryContents]);
+
+  // Toggle directory expansion
+  const toggleDirectory = useCallback((dirPath: string) => {
+    setExpandedDirs(prev => {
+      const next = new Set(prev);
+      if (next.has(dirPath)) {
+        next.delete(dirPath);
+      } else {
+        next.add(dirPath);
+      }
+      return next;
+    });
+  }, []);
 
   // Load file content
   const loadFileContent = useCallback(async (filePath: string) => {
@@ -90,17 +156,36 @@ export function TaskFiles({ task }: TaskFilesProps) {
     setIsLoadingContent(true);
     setContentError(null);
     setFileContent(null);
+    setImageDataUrl(null);
 
     try {
-      const result = await window.electronAPI.readFile(filePath);
-      if (!result.success || result.data === undefined) {
-        throw new Error(result.error || 'Failed to read file');
+      // Handle image files differently - open with system viewer
+      // Electron security restrictions prevent loading local file:// URLs
+      if (isImageFile(filePath)) {
+        // Open image with system default viewer
+        await window.electronAPI.openPath(filePath);
+        // Mark as loaded but with special image state
+        setImageDataUrl('opened-externally');
+      } else {
+        const result = await window.electronAPI.readFile(filePath);
+        if (!result.success || result.data === undefined) {
+          throw new Error(result.error || 'Failed to read file');
+        }
+        setFileContent(result.data);
       }
-      setFileContent(result.data);
     } catch (err) {
       setContentError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setIsLoadingContent(false);
+    }
+  }, []);
+
+  // Open file with system default application
+  const openWithSystem = useCallback(async (filePath: string) => {
+    try {
+      await window.electronAPI.openPath(filePath);
+    } catch (err) {
+      console.error('Failed to open file:', err);
     }
   }, []);
 
@@ -116,10 +201,14 @@ export function TaskFiles({ task }: TaskFilesProps) {
     loadFiles();
   }, [loadFiles]);
 
-  // Auto-select first file (spec.md) when files are loaded
+  // Auto-select first non-directory file when files are loaded
   useEffect(() => {
     if (files.length > 0 && selectedFile === null) {
-      loadFileContent(files[0].path);
+      // Find the first non-directory file (skip directories like 'attachments')
+      const firstFile = files.find(f => !f.isDirectory);
+      if (firstFile) {
+        loadFileContent(firstFile.path);
+      }
     }
     // Only run when files change, not on selectedFile changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -226,6 +315,26 @@ export function TaskFiles({ task }: TaskFilesProps) {
       );
     }
 
+    // Render message for image files (opened externally)
+    if (imageDataUrl === 'opened-externally' && isImageFile(selectedFile)) {
+      return (
+        <div className="h-full flex flex-col items-center justify-center p-4 bg-muted/20">
+          <FileImage className="h-16 w-16 text-purple-500/50 mb-4" />
+          <p className="text-sm text-muted-foreground mb-4">
+            {t('tasks:files.imageOpenedExternally', 'Image opened in system viewer')}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => openWithSystem(selectedFile)}
+          >
+            <ExternalLink className="h-3 w-3 mr-1" />
+            {t('tasks:files.openAgain', 'Open Again')}
+          </Button>
+        </div>
+      );
+    }
+
     if (fileContent === null) return null;
 
     // Render JSON with formatting
@@ -313,26 +422,83 @@ export function TaskFiles({ task }: TaskFilesProps) {
               </div>
             ) : (
               files.map((file) => (
-                <button
-                  type="button"
-                  key={file.path}
-                  role="option"
-                  aria-selected={selectedFile === file.path}
-                  onClick={() => loadFileContent(file.path)}
-                  className={cn(
-                    'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors',
-                    'hover:bg-secondary/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
-                    selectedFile === file.path && 'bg-secondary'
+                <div key={file.path}>
+                  {file.isDirectory ? (
+                    // Directory item with expand/collapse
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => toggleDirectory(file.name)}
+                        className={cn(
+                          'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors',
+                          'hover:bg-secondary/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1'
+                        )}
+                      >
+                        {expandedDirs.has(file.name) ? (
+                          <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                        )}
+                        {expandedDirs.has(file.name) ? (
+                          <FolderOpenIcon className="h-4 w-4 text-amber-400" />
+                        ) : (
+                          <Folder className="h-4 w-4 text-amber-400" />
+                        )}
+                        <span className="text-xs font-medium truncate flex-1">
+                          {file.name}
+                        </span>
+                      </button>
+                      {/* Render children if expanded */}
+                      {expandedDirs.has(file.name) && file.children && file.children.length > 0 && (
+                        <div className="ml-4 pl-2 border-l border-border/50">
+                          {file.children.map((child) => (
+                            <button
+                              type="button"
+                              key={child.path}
+                              role="option"
+                              aria-selected={selectedFile === child.path}
+                              onClick={() => loadFileContent(child.path)}
+                              className={cn(
+                                'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors',
+                                'hover:bg-secondary/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
+                                selectedFile === child.path && 'bg-secondary'
+                              )}
+                            >
+                              {getFileIcon(child.name)}
+                              <span className="text-xs font-medium truncate flex-1">
+                                {child.name}
+                              </span>
+                              {selectedFile === child.path && (
+                                <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    // Regular file item
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={selectedFile === file.path}
+                      onClick={() => loadFileContent(file.path)}
+                      className={cn(
+                        'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors',
+                        'hover:bg-secondary/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
+                        selectedFile === file.path && 'bg-secondary'
+                      )}
+                    >
+                      {getFileIcon(file.name)}
+                      <span className="text-xs font-medium truncate flex-1">
+                        {file.name}
+                      </span>
+                      {selectedFile === file.path && (
+                        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                      )}
+                    </button>
                   )}
-                >
-                  {getFileIcon(file.name)}
-                  <span className="text-xs font-medium truncate flex-1">
-                    {file.name}
-                  </span>
-                  {selectedFile === file.path && (
-                    <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                  )}
-                </button>
+                </div>
               ))
             )}
           </div>

@@ -318,6 +318,20 @@ export interface ProjectEnvConfig {
   gitlabProject?: string; // Format: group/project or numeric ID
   gitlabAutoSync?: boolean; // Auto-sync issues on project load
 
+  // Azure DevOps Integration
+  azureDevOpsEnabled: boolean;
+  azureDevOpsOrganization?: string; // Azure DevOps organization name
+  azureDevOpsProject?: string; // Project name within organization
+  azureDevOpsPat?: string; // Personal Access Token
+  azureDevOpsRepository?: string; // Git repository name (for PR operations)
+  azureDevOpsAutoSync?: boolean; // Auto-sync work items on project load
+
+  // External Status Sync (sync task status to GitHub/Azure DevOps)
+  externalStatusSyncEnabled?: boolean; // Master toggle for external sync
+  externalSyncToGitHub?: boolean; // Sync to GitHub issues when tasks complete
+  externalSyncToAzureDevOps?: boolean; // Sync to ADO work items when tasks complete
+  // Note: ADO status mapping configuration is stored in sync-config.json
+
   // Git/Worktree Settings
   defaultBranch?: string; // Base branch for worktree creation (e.g., 'main', 'develop')
 

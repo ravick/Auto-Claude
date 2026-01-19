@@ -651,6 +651,40 @@ export async function recoverStuckTask(
 }
 
 /**
+ * Report a stuck task to external systems (Azure DevOps)
+ * This is called when a task is detected as stuck (status says in_progress but no process running)
+ * @param taskId - The task ID to report
+ * @param context - Optional context about the task's state (phase, progress, etc.)
+ */
+export async function reportStuckTask(
+  taskId: string,
+  context?: { phase?: string; completedSubtasks?: number; totalSubtasks?: number; currentSubtask?: string }
+): Promise<{ success: boolean; reported: boolean; externalId?: number }> {
+  try {
+    const result = await window.electronAPI.reportStuckTask(taskId, context);
+
+    if (result.success && result.data) {
+      return {
+        success: true,
+        reported: result.data.reported,
+        externalId: result.data.externalId
+      };
+    }
+
+    return {
+      success: false,
+      reported: false
+    };
+  } catch (error) {
+    console.error('Error reporting stuck task:', error);
+    return {
+      success: false,
+      reported: false
+    };
+  }
+}
+
+/**
  * Delete a task and its spec directory
  */
 export async function deleteTask(

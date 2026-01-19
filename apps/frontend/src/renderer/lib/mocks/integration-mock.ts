@@ -11,6 +11,7 @@ export const integrationMock = {
       linearEnabled: false,
       githubEnabled: false,
       gitlabEnabled: false,
+      azureDevOpsEnabled: false,
       graphitiEnabled: false,
       enableFancyUi: true
     }
@@ -133,6 +134,17 @@ export const integrationMock = {
     data: {
       url: 'https://github.com/example/repo/releases/tag/v1.0.0'
     }
+  }),
+
+  // GitHub Issue Sync Operations
+  updateIssueState: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  addIssueComment: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
   }),
 
   onGitHubInvestigationProgress: () => () => {},
@@ -386,5 +398,207 @@ export const integrationMock = {
   onGitLabInvestigationError: () => () => {},
 
   // OAuth device code event listener (for streaming device code during auth)
-  onGitHubAuthDeviceCode: () => () => {}
+  onGitHubAuthDeviceCode: () => () => {},
+
+  // Azure DevOps Auth/Setup Operations
+  detectAzureDevOpsRepo: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  validateAzureDevOpsPat: async () => ({
+    success: true,
+    data: { valid: false }
+  }),
+
+  listAzureDevOpsOrganizations: async () => ({
+    success: true,
+    data: []
+  }),
+
+  listAzureDevOpsProjectsWithPat: async () => ({
+    success: true,
+    data: []
+  }),
+
+  listAzureDevOpsReposWithPat: async () => ({
+    success: true,
+    data: []
+  }),
+
+  createAzureDevOpsRepo: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  addAzureDevOpsRemote: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  getAzureDevOpsBranches: async () => ({
+    success: true,
+    data: []
+  }),
+
+  initializeAzureDevOpsRepo: async (_organization: string, _project: string, _repo: string, branchName: string) => ({
+    success: true,
+    data: { branchName }
+  }),
+
+  // Azure DevOps Integration Operations
+  getAzureDevOpsProjects: async () => ({
+    success: true,
+    data: []
+  }),
+
+  getAzureDevOpsRepositories: async () => ({
+    success: true,
+    data: []
+  }),
+
+  checkAzureDevOpsConnection: async () => ({
+    success: true,
+    data: {
+      connected: false,
+      error: 'Not available in browser mock'
+    }
+  }),
+
+  getAzureDevOpsWorkItems: async () => ({
+    success: true,
+    data: {
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 50,
+      hasMore: false
+    }
+  }),
+
+  getAzureDevOpsWorkItem: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  investigateAzureDevOpsWorkItem: () => {
+    console.warn('[Browser Mock] investigateAzureDevOpsWorkItem called');
+  },
+
+  importAzureDevOpsWorkItems: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  getAzureDevOpsPullRequests: async () => ({
+    success: true,
+    data: []
+  }),
+
+  getAzureDevOpsPullRequest: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  // Azure DevOps Data Source Operations
+  getAzureDevOpsTeams: async () => ({
+    success: true,
+    data: [
+      { id: 'team-1', name: 'Default Team', description: 'The default project team' },
+      { id: 'team-2', name: 'Development Team', description: 'Backend developers' }
+    ]
+  }),
+
+  getAzureDevOpsBacklogs: async () => ({
+    success: true,
+    data: [
+      { id: 'Microsoft.RequirementCategory', name: 'Stories', type: 'product' as const, color: '#009CCC' },
+      { id: 'Microsoft.TaskCategory', name: 'Tasks', type: 'product' as const, color: '#F2CB1D' },
+      { id: 'Microsoft.FeatureCategory', name: 'Features', type: 'portfolio' as const, color: '#773B93' },
+      { id: 'Microsoft.EpicCategory', name: 'Epics', type: 'portfolio' as const, color: '#FF7B00' }
+    ]
+  }),
+
+  getAzureDevOpsBacklogWorkItems: async () => ({
+    success: true,
+    data: []
+  }),
+
+  getAzureDevOpsSavedQueries: async () => ({
+    success: true,
+    data: [
+      { id: 'query-1', name: 'My Tasks', path: 'My Queries/My Tasks', isFolder: false, queryType: 'flat' as const },
+      { id: 'query-2', name: 'All Bugs', path: 'Shared Queries/All Bugs', isFolder: false, queryType: 'flat' as const }
+    ]
+  }),
+
+  executeAzureDevOpsSavedQuery: async () => ({
+    success: true,
+    data: []
+  }),
+
+  runAzureDevOpsPRReview: () => {
+    console.warn('[Browser Mock] runAzureDevOpsPRReview called');
+  },
+
+  postAzureDevOpsPRComment: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  // Azure DevOps Event Listeners
+  onAzureDevOpsInvestigationProgress: () => () => {},
+  onAzureDevOpsInvestigationComplete: () => () => {},
+  onAzureDevOpsInvestigationError: () => () => {},
+  onAzureDevOpsPRReviewProgress: () => () => {},
+  onAzureDevOpsPRReviewComplete: () => () => {},
+  onAzureDevOpsPRReviewError: () => () => {},
+
+  // Azure DevOps Work Item Sync Operations
+  updateAzureDevOpsWorkItemState: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  getAzureDevOpsWorkItemTypes: async () => ({
+    success: true,
+    types: [
+      { name: 'Bug', description: 'A defect in the product' },
+      { name: 'User Story', description: 'A user-facing feature' },
+      { name: 'Task', description: 'A unit of work' }
+    ]
+  }),
+
+  getAzureDevOpsWorkItemStates: async () => ({
+    success: true,
+    states: [
+      { name: 'New', color: '007ACC', category: 'Proposed' },
+      { name: 'Active', color: '007ACC', category: 'InProgress' },
+      { name: 'Closed', color: '339933', category: 'Completed' }
+    ]
+  }),
+
+  // External Sync API Operations
+  getSyncConfig: async () => ({
+    success: true,
+    config: {
+      enabled: false,
+      syncToGitHub: false,
+      syncToAzureDevOps: false
+    }
+  }),
+
+  saveSyncConfig: async () => ({
+    success: true
+  }),
+
+  manualSync: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  }),
+
+  syncFromADO: async () => ({
+    success: false,
+    error: 'Not available in browser mock'
+  })
 };

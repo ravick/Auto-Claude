@@ -17,6 +17,7 @@ import {
 } from './plan-file-utils';
 import { findTaskWorktree } from '../../worktree-paths';
 import { projectStore } from '../../project-store';
+import { ExternalSyncService, type SyncContext } from '../../services/external-sync-service';
 
 /**
  * Atomic file write to prevent TOCTOU race conditions.
@@ -273,6 +274,7 @@ export function registerTaskExecutionHandlers(
       // Uses shared utility for consistency with agent-events-handlers.ts
       // NOTE: This is now async and non-blocking for better UI responsiveness
       const planPath = path.join(specDir, AUTO_BUILD_PATHS.IMPLEMENTATION_PLAN);
+      const oldStatus = task.status; // Capture for sync
       setImmediate(async () => {
         const persistStart = Date.now();
         try {
@@ -288,6 +290,16 @@ export function registerTaskExecutionHandlers(
         } catch (err) {
           console.error('[TASK_START] Failed to persist plan status:', err);
         }
+
+        // Fire-and-forget: Sync status to external systems (GitHub, Azure DevOps)
+        // This should never block the local update
+        const syncContext: SyncContext = {
+          reason: 'task_started',
+          phase: 'planning',
+        };
+        ExternalSyncService.syncTaskStatus(project, task, oldStatus, 'in_progress', syncContext).catch(err => {
+          console.warn('[TASK_START] External sync failed (non-blocking):', err);
+        });
       });
       // Note: Plan file may not exist yet for new tasks - that's fine (persistPlanStatus handles ENOENT)
     }
@@ -788,6 +800,16 @@ export function registerTaskExecutionHandlers(
           }
         }
 
+        // Fire-and-forget: Sync status to external systems (GitHub, Azure DevOps)
+        // This should never block the local update
+        // Pass the old status (task.status) for discussion comments
+        const syncContext: SyncContext = {
+          reason: 'manual_update',
+        };
+        ExternalSyncService.syncTaskStatus(project, task, task.status, status, syncContext).catch(err => {
+          console.warn('[TASK_UPDATE_STATUS] External sync failed (non-blocking):', err);
+        });
+
         return { success: true };
       } catch (error) {
         console.error('Failed to update task status:', error);
@@ -1166,6 +1188,68 @@ export function registerTaskExecutionHandlers(
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to recover task'
+        };
+      }
+    }
+  );
+
+  /**
+   * Report a stuck task to external systems (Azure DevOps)
+   * This is called from the renderer when a task is detected as stuck
+   * (status says in_progress but no process is running)
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.TASK_REPORT_STUCK,
+    async (
+      _,
+      taskId: string,
+      context?: { phase?: string; completedSubtasks?: number; totalSubtasks?: number; currentSubtask?: string }
+    ): Promise<IPCResult<{ reported: boolean; externalId?: number }>> => {
+      try {
+        // Build sync context from provided context
+        const syncContext: Omit<SyncContext, 'reason'> = {};
+        if (context?.phase) {
+          syncContext.phase = context.phase as SyncContext['phase'];
+        }
+        if (context?.completedSubtasks !== undefined || context?.totalSubtasks !== undefined || context?.currentSubtask) {
+          syncContext.progress = {
+            completedSubtasks: context.completedSubtasks,
+            totalSubtasks: context.totalSubtasks,
+            currentSubtask: context.currentSubtask,
+          };
+        }
+
+        // Report stuck task to ADO
+        const result = await ExternalSyncService.reportStuckTaskToADO(taskId, syncContext);
+
+        if (!result) {
+          // Task is not linked to ADO or ADO not configured - this is not an error
+          return {
+            success: true,
+            data: { reported: false },
+          };
+        }
+
+        if (result.success) {
+          return {
+            success: true,
+            data: {
+              reported: true,
+              externalId: result.externalId as number,
+            },
+          };
+        } else {
+          console.warn('[TASK_REPORT_STUCK] Failed to report stuck task to ADO:', result.error?.message);
+          return {
+            success: false,
+            error: result.error?.message || 'Failed to report stuck task',
+          };
+        }
+      } catch (error) {
+        console.error('[TASK_REPORT_STUCK] Error reporting stuck task:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to report stuck task',
         };
       }
     }

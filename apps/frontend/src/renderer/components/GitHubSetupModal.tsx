@@ -44,6 +44,7 @@ interface GitHubSetupModalProps {
   project: Project;
   onComplete: (settings: { githubToken: string; githubRepo: string; mainBranch: string; githubAuthMethod?: 'oauth' | 'pat' }) => void;
   onSkip?: () => void;
+  onBack?: () => void; // Optional back button to return to provider selection
 }
 
 type SetupStep = 'github-auth' | 'claude-auth' | 'repo-confirm' | 'repo' | 'branch' | 'complete';
@@ -62,7 +63,8 @@ export function GitHubSetupModal({
   onOpenChange,
   project,
   onComplete,
-  onSkip
+  onSkip,
+  onBack
 }: GitHubSetupModalProps) {
   const { t } = useTranslation('dialogs');
   const [step, setStep] = useState<SetupStep>('github-auth');
@@ -141,12 +143,12 @@ export function GitHubSetupModal({
             setGithubToken(ghTokenResult.data!.token);
             setStep('claude-auth');
           } else {
-            // No auth, start from beginning
+            // No auth, start from GitHub auth
             setStep('github-auth');
           }
         } catch (err) {
           console.error('Failed to check existing auth:', err);
-          // On error, start from beginning
+          // On error, start from GitHub auth
           setStep('github-auth');
         }
       };
@@ -867,12 +869,13 @@ export function GitHubSetupModal({
     if (step === 'complete') return null;
 
     // Map steps to progress indices
-    // Auth steps (github-auth, claude-auth, repo) = 0
+    // Auth steps (github-auth, claude-auth, repo, repo-confirm) = 0
     // Config steps (branch) = 1
     const currentIndex =
       step === 'github-auth' ? 0 :
       step === 'claude-auth' ? 0 :
       step === 'repo' ? 0 :
+      step === 'repo-confirm' ? 0 :
       1;
 
     return (
