@@ -7,6 +7,7 @@ Main enforcement point for the security system.
 """
 
 import os
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,91 @@ from project_analyzer import BASE_COMMANDS, SecurityProfile, is_command_allowed
 from .parser import extract_commands, get_command_for_validation, split_command_segments
 from .profile import get_security_profile
 from .validator import VALIDATORS
+
+
+def _is_executable_available(cmd: str) -> tuple[bool, bool]:
+    """
+    Check if a command executable is available.
+
+    First tries shutil.which, then on Windows also checks
+    discovered tool paths.
+
+    Args:
+        cmd: Command name (e.g., "npm", "node", "python")
+
+    Returns:
+        Tuple of (is_available, is_known_tool):
+        - is_available: True if executable is available
+        - is_known_tool: True if this is a known tool we track (node, npm, etc.)
+    """
+    # Known tools we can verify
+    known_tools = {"node", "npm", "npx", "python", "python3", "pip", "pip3", "uv"}
+
+    # First check if it's in PATH
+    if shutil.which(cmd):
+        return True, cmd in known_tools
+
+    # On Windows, check discovered tool paths
+    if os.name == "nt":
+        try:
+            from core.tool_path_resolver import is_tool_available
+
+            if is_tool_available(cmd):
+                return True, cmd in known_tools
+        except ImportError:
+            pass
+
+    # For unknown commands, assume available (avoid false negatives)
+    # For known tools, we've checked and they're not found
+    is_known = cmd in known_tools
+    return not is_known, is_known
+
+
+def _get_executable_not_found_message(cmd: str) -> str:
+    """
+    Get a helpful error message for when an executable is not found.
+
+    Args:
+        cmd: Command name (e.g., "npm", "node", "python")
+
+    Returns:
+        Helpful error message string
+    """
+    messages = {
+        "npm": (
+            f"Command '{cmd}' is allowed but not found. "
+            f"Ensure Node.js is installed and npm is in PATH. "
+            f"On Windows, you may need to install Node.js from nodejs.org or via nvm-windows."
+        ),
+        "npx": (
+            f"Command '{cmd}' is allowed but not found. "
+            f"Ensure Node.js is installed and npx is in PATH. "
+            f"npx comes bundled with npm 5.2+."
+        ),
+        "node": (
+            f"Command '{cmd}' is allowed but not found. "
+            f"Ensure Node.js is installed and in PATH. "
+            f"On Windows, you may need to install Node.js from nodejs.org or via nvm-windows."
+        ),
+        "python": (
+            f"Command '{cmd}' is allowed but not found. "
+            f"Ensure Python is installed and in PATH. "
+            f"On Windows, install from python.org or the Microsoft Store."
+        ),
+        "pip": (
+            f"Command '{cmd}' is allowed but not found. "
+            f"Ensure Python and pip are installed and in PATH."
+        ),
+        "uv": (
+            f"Command '{cmd}' is allowed but not found. "
+            f"Install uv with: pip install uv, or cargo install uv."
+        ),
+    }
+    return messages.get(
+        cmd,
+        f"Command '{cmd}' is allowed but executable not found. "
+        f"Ensure {cmd} is installed and in PATH.",
+    )
 
 
 async def bash_security_hook(
@@ -116,6 +202,15 @@ async def bash_security_hook(
             return {
                 "decision": "block",
                 "reason": reason,
+            }
+
+        # For allowed commands, check if executable is actually available
+        # This provides clearer error messages for known tools like npm, node, etc.
+        exec_available, is_known_tool = _is_executable_available(cmd)
+        if not exec_available and is_known_tool:
+            return {
+                "decision": "block",
+                "reason": _get_executable_not_found_message(cmd),
             }
 
         # Additional validation for sensitive commands
